@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.1
+// @version      3.0.2
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.1';
+  const VERSION = '3.0.2';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -8403,6 +8403,9 @@
     const furniCount = S.furni.floor.size + S.furni.wall.size;
     const p = s.room.paint;
     ui.root.querySelector('.status').innerHTML = [
+      !S.stats.sockets
+        ? `<div class="warn">⚠ Não peguei a conexão do hotel: o script entrou depois do jogo abrir. Recarregue a página do hotel (F5).</div>`
+        : '',
       `<div><b>Quarto</b> ${esc(s.room.id ?? '?')} · modelo <b>${esc(s.room.model ?? '?')}</b> · ` +
         `<b>${s.floor.length}</b> no chão · <b>${s.wall.length}</b> na parede · ${s.shoppingList.length} tipos diferentes</div>`,
       p.floor || p.wallpaper || p.landscape
@@ -8523,5 +8526,11 @@
       (learned ? ` · headers detectados: ${learned}` : '') +
       ` · ofertas do catálogo conhecidas: ${Object.keys(S.catalog.offers).length}` +
       ` · você: ${S.me ? S.me.name || '#' + S.me.id : '?'}`;
+  }
+
+  // No Habblet o botão aparece mesmo quando o script entra depois do jogo conectar (aí o painel pede para recarregar).
+  if (typeof document !== 'undefined' && /habblet/i.test((W.location && W.location.host) || '')) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mountUI(), { once: true });
+    else setTimeout(mountUI, 0);
   }
 })();
