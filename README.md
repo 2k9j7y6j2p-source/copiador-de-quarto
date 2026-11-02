@@ -19,6 +19,13 @@ Também tem:
 
 As atualizações chegam sozinhas pelo Tampermonkey.
 
+### Não apareceu no jogo?
+
+- **Chrome/Edge:** abra `chrome://extensions` (no Edge, `edge://extensions`), clique em **Detalhes** no Tampermonkey e ligue **Permitir scripts do usuário** (Allow User Scripts). Nas versões mais antigas do Chrome, ligue o **Modo do desenvolvedor**, no canto de cima.
+- Clique no ícone do Tampermonkey e veja se o **Copiador de Quarto** está ligado (verde).
+- Recarregue a página do hotel (F5) depois de instalar.
+- Só funciona no navegador do computador, não no aplicativo do Habblet nem no celular.
+
 ## Como usar o básico
 
 1. No quarto que você quer copiar: **Colar no meu quarto → Guardar este quarto como cópia**.
