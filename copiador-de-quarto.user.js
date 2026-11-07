@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.3
+// @version      3.0.5
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.3';
+  const VERSION = '3.0.4';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -732,7 +732,8 @@
       case 'floorList':
       case 'wallList': {
         const target = kind === 'floorList' ? S.floor : S.wall;
-        target.clear();
+        // O Habblet reenvia listas parciais no mesmo quarto (ex.: a cada 5 s no labirinto): só a primeira substitui o que havia.
+        if (!S.seen[kind]) target.clear();
         d.owners.forEach((name, id) => S.owners.set(id, name));
         d.items.forEach((it) => target.set(it.id, it));
         if (kind === 'floorList') d.items.forEach((it) => noteState(it));
@@ -5628,8 +5629,9 @@
             <div class="lvpad"><textarea data-o="wmAsk" rows="2" spellcheck="false" placeholder="ex.: quando falar :vip ir para a sala vip"></textarea></div>
             <div class="lvpad wmgroups wmtabs"></div>
             <div class="wmres lvpad"></div>
-            <div class="lvpad"><b>Não achou?</b> <span class="dim">Copie o pedido para o Claude, cole a resposta aqui e ela vira um sistema para montar.</span></div>
-            <div class="actions"><button data-a="wmClaude">copiar pedido para o Claude</button></div>
+            <div class="lvpad"><b>Não achou?</b> <span class="dim">Peça pela sua chave da API (precisa do ajudante “Copiador de Quarto – Claude” no Tampermonkey)
+              ou copie o pedido para o Claude e cole a resposta aqui: ela vira um sistema para montar.</span></div>
+            <div class="actions"><button class="primary" data-a="wmApi">🤖 pedir ao Claude pela API</button> <button data-a="wmClaude">copiar pedido para o Claude</button></div>
             <div class="lvpad"><textarea data-o="wmJson" rows="2" spellcheck="false" placeholder="cole aqui a resposta do Claude"></textarea></div>
             <div class="actions"><button class="primary" data-a="wmPaste">usar a resposta</button></div>
           </div>
@@ -6185,6 +6187,7 @@
     if (a === 'wmCancel') { wmReset('Montagem cancelada'); return; }
     if (a === 'wmRead') { if (WREAD.run) { WREAD.run = false; renderWm(); } else readRoomWired().catch((e) => toast('Erro: ' + e.message, true)); return; }
     if (a === 'wmClaude') { copied(await copy(wmClaudeText(ui.wmAsk || '')), 'Pedido copiado: cole no Claude'); return; }
+    if (a === 'wmApi') { wmAskApi().catch((e) => { API.run = false; toast('Erro: ' + e.message, true); }); return; }
     if (a === 'wmPaste') {
       try { const sys = wmApplyJson(ui.root.querySelector('[data-o="wmJson"]').value); ui.wmAsk = ''; ui.root.querySelector('[data-o="wmAsk"]').value = '';
         toast(`Sistema “${sys.t}” pronto para montar`); renderWm(); } catch (e) { toast('Resposta inválida: ' + e.message, true); }
@@ -7148,7 +7151,7 @@
       w: Math.max(...items.map((i) => i.dx)) + 1, h: Math.max(...items.map((i) => i.dy)) + 1, pilhas: tiles.size, items, conta,
       varNames: Object.fromEntries(WREAD.varNames || []) };
     S.wcopy = cp;
-    S.wcopies = (S.wcopies || []).filter((c) => c.id !== cp.id).concat(cp).slice(-30);
+    S.wcopies = (S.wcopies || []).filter((c) => c.id !== cp.id).concat(cp).slice(-200);
     saveWcopies();
     return cp;
   }
@@ -7493,7 +7496,7 @@
   const persAsSys = (cp) => {
     const piles = new Map();
     for (const i of cp.items) if (i.def && !/^wf_var_/.test(i.classname)) { const k = i.dx + ',' + i.dy; if (!piles.has(k)) piles.set(k, []); piles.get(k).push(i); }
-    return { id: cp.id, g: PERS_G, copia: cp, t: cp.name, tags: `${cp.name} ${cp.origem || ''} personalizado copiado jogo game`,
+    return { id: cp.id, g: cp.grupo || PERS_G, copia: cp, t: cp.name, tags: `${cp.name} ${cp.origem || ''} personalizado copiado jogo game`,
       d: `${cp.pilhas} pilha(s), ${cp.items.length} mobis (${cp.items.filter((i) => i.def).length} wired) copiados de “${cp.origem || cp.name}” · ${cp.w}×${cp.h} quadrados`,
       pilhas: [...piles.values()].slice(0, 12).map((l) => l.sort((a, b) => a.rz - b.rz).map((i) => ({ c: i.classname }))) };
   };
@@ -7761,10 +7764,75 @@
       '"pilhas":[[{"c":"classname do ativador","s":"texto com {chave}","i":[números],"ids":"chave do papel","d":0}, {"c":"classname do efeito"}]]}',
       'Regras: cada pilha começa com um ativador (wf_trg_*); papeis com 1 = um mobi, 0 = vários; "d" = atraso em meios segundos; ' +
       '"fs"/"us" = fontes (100 escolhidos, 200 seletor, 201 sinal / 0 quem ativou, 200 seletor, 201 sinal); para sinal use {"c":"wf_antenna2"} ' +
-      'na pilha e "ids":"antena:0". Use só os wired desta lista:', ''];
+      'na pilha e "ids":"antena:0". "ids" também aceita uma lista de papéis (["cadeiraA","cadeiraB"]). Campos podem ter opções: ' +
+      '["chave","rótulo","padrão",[["valor","nome"]]]. "g" (opcional) é o grupo onde o sistema aparece.', '', ...WM_REGRAS, '',
+      'Use só os wired desta lista:', ''];
     for (const [tipo, nome, c] of WIRED_GUIDE.itens) L.push(`${c} — ${tipo} ${nome}`);
     L.push('', '## Pedido', ask || '(escreva o pedido)');
     return L.join('\n');
+  }
+  // O que já aprendi montando no Habblet (vai no pedido copiado e no pedido pela API).
+  const WM_REGRAS = ['Regras do Habblet (aprendidas montando no hotel):',
+    '- Mover e Rotacionar (wf_act_move_rotate) i=[mover, girar]: mover 0 parado, 1 aleatório, 4 ↗ (y−1), 5 ↘ (x+1), 6 ↙ (y+1), 7 ↖ (x−1); ' +
+      'girar 0 nada, 1 horário, 2 anti-horário, 3 aleatório. Se bater em algo, só não anda.',
+    '- Repetir Efeito (wf_trg_periodically) i=[n] = a cada n×0,5 s; Repetir curto (wf_trg_period_short) i=[n] = a cada n×50 ms (n de 1 a 10).',
+    '- A Batida (wf_trg_collision) só dispara com Perseguir, Fugir, Mudar Direção ou Colisão de Topo, nunca com Mover e Rotacionar.',
+    '- Nunca dois Keybind nem dois "Diz algo" com o mesmo gatilho no quarto: um rouba o outro.',
+    '- Mensagens: wf_act_show_message i=[quem vê (0 quem ativou, 1 todos), estilo]; wf_act_alll_message i=[0, estilo]. Estilos: 34 balão, 80 vermelho, ' +
+      '81 verde, 82 azul, 84 informação, 85 atenção, 88 correto, 86 errado. %executor% é quem ativou.',
+    '- Volta à programação (wf_act_match_to_sshot) e as condições de estado (wf_cnd_match_snapshot, wf_cnd_not_match_snap) usam i=[estado, direção, ' +
+      'posição, altura] e gravam os mobis como estão NA HORA DE MONTAR: diga no "d" como deixar os mobis antes de montar.',
+    '- Para guardar a vez ou um lado, use um mobi de 2 estados + Mudar o Estado (wf_act_toggle_state), com a condição de estado normal numa pilha e a negada na outra.',
+    '- Seletores (wf_slc_*) passam o que pegaram para os efeitos da pilha com "us":[200] (usuários) ou "fs":[200] (mobis).',
+    '- Super Wired (wf_act_super_wiredd) precisa de alguém que ativou (Diz algo, clique, pisar): não use em pilha de Repetir.',
+    '- O sistema só coloca as caixas de wired. Os outros mobis a pessoa já tem no quarto e escolhe como papéis: explique no "d" como arrumar o quarto.',
+    '- Use o mínimo de caixas, campos para números e textos que a pessoa possa querer mudar, e escreva tudo em português.'];
+
+  // Pedir pela API: quem chama a API é o ajudante "Copiador de Quarto – Claude", outro script que roda isolado da
+  // página e guarda a chave no Tampermonkey. Daqui só vai o texto do pedido e volta o texto da resposta.
+  const API = { pronto: false, temChave: false, n: 0, run: false, esperando: new Map() };
+  const API_SISTEMA = 'Você monta sistemas de wired do Habblet para o plugin Copiador de Quarto. Responda só com um bloco ```json``` no ' +
+    'formato pedido, sem texto fora dele, usando só os wired da lista. Pense em como cada pilha dispara no hotel antes de responder.';
+  if (W.document && W.document.addEventListener) {
+    W.document.addEventListener('copiador-claude:pronto', (e) => {
+      try { const d = JSON.parse(e.detail); API.pronto = true; API.temChave = !!d.temChave; } catch (_) { /* evento de outro script */ }
+    });
+    W.document.addEventListener('copiador-claude:resposta', (e) => {
+      let d;
+      try { d = JSON.parse(e.detail); } catch (_) { return; }
+      const f = d && API.esperando.get(d.id);
+      if (f) { API.esperando.delete(d.id); f(d); }
+    });
+  }
+  async function wmAskApi() {
+    const ask = String(ui.wmAsk || '').trim();
+    if (!ask) { toast('Escreva o pedido na caixa de cima primeiro', true); return; }
+    if (API.run) { toast('Já tem um pedido indo para o Claude: espere a resposta'); return; }
+    if (!API.pronto) { W.document.dispatchEvent(new W.CustomEvent('copiador-claude:ola')); await sleep(700); }
+    if (!API.pronto) { toast('Instale o ajudante “Copiador de Quarto – Claude” no Tampermonkey (link no README do GitHub) e recarregue o hotel', true); return; }
+    const id = `p${Date.now()}-${++API.n}`;
+    const resp = new Promise((resolve) => {
+      API.esperando.set(id, resolve);
+      setTimeout(() => { if (API.esperando.delete(id)) resolve({ ok: false, erro: 'o ajudante não respondeu em 6 minutos' }); }, 360000);
+    });
+    API.run = true;
+    toast('Pedido indo para o Claude: confirme na janela do navegador e espere 1 ou 2 minutos');
+    W.document.dispatchEvent(new W.CustomEvent('copiador-claude:pedido', { detail: JSON.stringify({ id, pedido: ask, sistema: API_SISTEMA, texto: wmClaudeText(ask) }) }));
+    const r = await resp;
+    API.run = false;
+    if (!r.ok) { if (r.erro !== 'cancelado') toast('Claude: ' + r.erro, true); return; }
+    try {
+      const sys = wmApplyJson(r.texto);
+      ui.wmAsk = '';
+      const box = ui.root.querySelector('[data-o="wmAsk"]');
+      if (box) box.value = '';
+      toast(`Sistema “${sys.t}” pronto para montar (grupo ${sys.g || '⭐ Meus'})`);
+    } catch (e) {
+      const box = ui.root.querySelector('[data-o="wmJson"]');
+      if (box) box.value = r.texto; // fica na caixa da resposta para conferir ou corrigir
+      toast('A resposta veio, mas não deu para usar: ' + e.message, true);
+    }
+    renderWm();
   }
   function wmApplyJson(text) {
     const m = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);

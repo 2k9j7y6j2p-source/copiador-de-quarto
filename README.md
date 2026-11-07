@@ -26,6 +26,16 @@ As atualizações chegam sozinhas pelo Tampermonkey.
 - Recarregue a página do hotel (F5) depois de instalar.
 - Só funciona no navegador do computador, não no aplicativo do Habblet nem no celular.
 
+## Pedir sistemas de wired ao Claude pela API (opcional)
+
+Na aba **Wired → Pedir e montar**, o botão **🤖 pedir ao Claude pela API** manda o seu pedido para o Claude e o sistema que voltar fica pronto para montar. Para isso:
+
+1. Crie uma chave em [console.anthropic.com](https://console.anthropic.com) (o uso da API é cobrado à parte da assinatura do Claude; vale pôr um limite de gasto no console).
+2. Instale o ajudante: **[Instalar o Copiador de Quarto – Claude](https://raw.githubusercontent.com/2k9j7y6j2p-source/copiador-de-quarto/main/copiador-claude.user.js)**.
+3. Recarregue o hotel. No primeiro pedido o ajudante pergunta a chave (ou use o menu do Tampermonkey → **🔑 Colocar ou trocar a chave do Claude**).
+
+A chave fica só no Tampermonkey do seu navegador: o ajudante roda separado da página do hotel, então o site não consegue ler a chave. Cada pedido pede confirmação numa janela do navegador. Nunca cole a chave em conversas, mensagens ou no próprio script.
+
 ## Como usar o básico
 
 1. No quarto que você quer copiar: **Colar no meu quarto → Guardar este quarto como cópia**.
