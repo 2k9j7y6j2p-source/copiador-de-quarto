@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.14
+// @version      3.0.15
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.14';
+  const VERSION = '3.0.15';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -826,7 +826,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha"], "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha", "criminoso"], "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   function checkTrava() {
@@ -1666,7 +1666,7 @@
     return {
       room: {
         id: r.id ?? null, model: r.model ?? null, heightmap: r.heightmap ?? null, buildHeightmap: r.buildHeightmap ?? null,
-        floorExact: typeof r.floorExact === 'boolean' ? r.floorExact : null, paint: r.paint || {},
+        floorExact: typeof r.floorExact === 'boolean' ? r.floorExact : null, pisoCode: r.pisoCode === true, paint: r.paint || {},
         wallHeight: r.wallHeight ?? null, thickness: r.thickness || null, door: r.door || null,
       },
       savedAt: obj.exportedAt || obj.savedAt || new Date().toISOString(),
@@ -1767,8 +1767,14 @@
     if (snap.protected) return snap;
     let rows = [];
     try { rows = pisoRows(); } catch (_) { rows = []; }
+    const porta = snap.room.door || entryDoor();
+    if (rows.length && porta && (rows[porta.y] || '')[porta.x] === 'x' && hasExactFloor()) {
+      const orig = (planRows(S.room.heightmap)[porta.y] || '')[porta.x];
+      if (orig && orig !== 'x') rows = rows.map((r, y) => (y === porta.y ? r.slice(0, porta.x) + orig + r.slice(porta.x + 1) : r));
+    }
     if (rows.length) snap.room.heightmap = rows.join('\r');
     snap.room.floorExact = rows.length > 0 || hasExactFloor(); // tem a planta para pôr na colagem
+    snap.room.pisoCode = rows.length > 0; // já é o código da aba Piso
     if (!snap.room.door) snap.room.door = entryDoor();
     // Mobis em quadrado que fica x (sem piso): vai junto o código para montar, com piso embaixo deles;
     // a colagem põe esse primeiro, cola os mobis e depois põe o floor da cópia.
@@ -4752,12 +4758,40 @@
       : null;
   }
 
+  // Cópias guardadas antes da 3.0.11 levam o floor exato do hotel. Para colar com o floor da aba Piso, faço o mesmo
+  // código a partir dos mobis da cópia: num quarto montado com pisos de mobi (60% ou mais do chão coberto), o chão
+  // sem mobi ou só com sombra vira x, como na aba Piso.
+  function pisoNaCopia(copy) {
+    if (!copy || !copy.room || !copy.room.heightmap || copy.room.pisoCode || !S.hideBare) return;
+    const rows = planRows(copy.room.heightmap);
+    const under = new Map();
+    for (const f of copy.floor || []) {
+      const sp = f.spriteId != null && S.furni.floor.has(f.spriteId) ? f.spriteId : spriteOfClass(f.classname);
+      const foot = sp != null ? footprintOf(sp, f.x, f.y, f.rot) : [[f.x, f.y]];
+      for (const [a, b] of foot) { const k = a + ',' + b; if (!under.has(k)) under.set(k, []); under.get(k).push(f); }
+    }
+    let tiles = 0, cobertos = 0;
+    rows.forEach((r, y) => [...r].forEach((c, x) => { if (c === 'x') return; tiles++; if (under.has(x + ',' + y)) cobertos++; }));
+    copy.room.pisoCode = true;
+    if (!tiles || cobertos / tiles < 0.6) return; // quarto normal: o floor fica como está
+    const sombra = (f) => /shadow/i.test(f.classname || '');
+    // a porta nunca vira x: a da cópia, ou o quadrado que sai da sala (a porta do jogo), ou um livre da borda
+    const porta = copy.room.door || guessDoor(copy.room.heightmap) || edgeDoor(copy.room.heightmap, copy.floor);
+    copy.room.heightmap = rows.map((r, y) => [...r].map((c, x) => {
+      if (c === 'x' || (porta && porta.x === x && porta.y === y)) return c;
+      const u = under.get(x + ',' + y);
+      return !u || u.every(sombra) ? 'x' : c;
+    }).join('')).join('\r');
+    planChecks.delete(copy);
+    buildPlans.delete(copy);
+  }
   function pasteAll(ctx) { return withFloor(ctx, () => pasteItems(ctx)); }
   // "3. colocar mobis": também põe o floor antes.
   function placeWithFloor(ctx) { return withFloor(ctx, async () => placeAll(await makePlan(ctx), ctx)); }
 
   // Põe o floor da cópia antes de colocar os mobis (e o final depois, se precisou do de montar).
   async function withFloor(ctx, fn) {
+    if (ctx.applyPlan) pisoNaCopia(S.copy);
     // Com mobis em quadrados sem piso: o código para montar antes, e o floor do quarto depois de colar.
     const pc = copyPlanCheck(S.copy);
     const exact = !!(S.copy && S.copy.room.floorExact);
@@ -5000,7 +5034,7 @@
   // ---- Amigos do app em verde: na barra de amigos de baixo e na lista do console, o nome dos nicks marcados (por
   // padrão os liberados do app) aparece na fonte verde das mensagens. Só na sua tela; nada vai para o hotel.
   const MARCA_KEY = 'copiadorDeQuarto.marcados.v1';
-  const MARCA = { on: true, nicks: ['cobra', 'martinha'], ...(store.get(MARCA_KEY) || {}) };
+  const MARCA = { on: true, nicks: ['cobra', 'martinha', 'criminoso'], ...(store.get(MARCA_KEY) || {}) };
   const nickDe = (s) => String(s || '').replace(/^@/, '').trim().toLowerCase();
   // o nome na barra de baixo (.friend-name) e, no console, o texto da linha que não é a cabeça nem um ícone
   function nomesDeAmigos() {
@@ -5369,7 +5403,7 @@
     state: S, snapshot, toText, toCSV, ingestFurnidata, loadFurnidataFromUrl, onPacket,
     paste: { makeCtx, normalizeCopy, parseCopyText, setCopy, saveCurrentRoom, makePlan, buyMissing, placeAll, pasteAll,
       buyForCopy, learnHeight, fixHeights, removeExtras, compareWithCopy, states: () => JSON.parse(JSON.stringify(STATES)), placeWithFloor, catalog: { encode: encodeCatalog, decode: decodeCatalog, loadAll: loadWholeCatalog, html: catalogHtml }, chatBlocked: () => chatBlocked(),
-      setChatBlock: (on) => { S.chatBlock = !!on; store.set(CHAT_BLOCK_KEY, S.chatBlock); }, placeHeight: setPlaceHeight, placeOff: placeModeOff, setHeightMacro: saveMacro, applyFloorPlan, planInfo, samePlan, diagText,
+      setChatBlock: (on) => { S.chatBlock = !!on; store.set(CHAT_BLOCK_KEY, S.chatBlock); }, placeHeight: setPlaceHeight, placeOff: placeModeOff, setHeightMacro: saveMacro, applyFloorPlan, planInfo, samePlan, pisoNaCopia, diagText,
       learnFloor, copyFloorLevels, setFloorMacro: saveFloorMacro,
       floorObserve: {
         start: startWatch, stop: stopWatch, commit: commitBatch, setLevel: (n) => { S.lvLevel = n; scheduleRender(); },
@@ -6343,7 +6377,7 @@
       keepPlaced: ui.root.querySelector('[data-o="keepPlaced"]').checked,
       matchStates: ui.root.querySelector('[data-o="matchStates"]').checked,
       forceUp: true, // :up sempre: cada mobi vai na altura exata, nada "direto no chão"
-      applyPlan: false, // colar mobis nunca mexe no floor: o floor você vê e copia na aba Floor
+      applyPlan: a === 'pasteAll' || a === 'place', // pedido dela: o Colar tudo põe o floor da cópia (o código da aba Piso)
       groupSame: ui.root.querySelector('[data-o="group"]').checked,
       buyMode: a === 'buy' ? 'always' : ui.root.querySelector('[data-o="buyMode"]').value,
       stickyHeight: ui.root.querySelector('[data-o="sticky"]').checked,
