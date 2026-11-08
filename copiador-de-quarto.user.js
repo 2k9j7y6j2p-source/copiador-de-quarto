@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.21
+// @version      3.0.22
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.21';
+  const VERSION = '3.0.22';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -1154,6 +1154,11 @@
     ws.send = function (data) {
       if (S.rec) { try { recordOut(data); } catch (_) { /* ignorado */ } }
       if (!S.bloqueado) { try { aprOut(data); } catch (_) { /* ignorado */ } try { if (!ownSend) cncOut(data); } catch (_) { /* ignorado */ } }
+      // altura do clique: o colocar espera o :up certo e depois vai para o hotel
+      if (!ownSend && !S.bloqueado) {
+        const self = this;
+        try { if (cnSegura(data, () => nativeSend.call(self, data))) return undefined; } catch (_) { /* ignorado */ }
+      }
       if (!ownSend && !S.bloqueado) {
         let walk = null, chat = null;
         try { walk = walkOf(data); chat = walk ? null : chatOf(data); } catch (_) { /* ignorado */ }
@@ -5425,7 +5430,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
-        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, get state() { return CN; }, get compra() { return CNC; } },
+        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -5960,6 +5965,7 @@
               <button data-a="cnUpDesliga">desligar</button></div>
             <label class="chk"><input type="checkbox" data-o="cnEmCima"> 📐 clicar num mobi põe o :up no topo dele (o próximo mobi vai em cima, apoiado)</label>
             <label class="chk"><input type="checkbox" data-o="cnMesma"> 🎯 clicar num mobi põe o :up na mesma altura dele (o mais usado nas sombras)</label>
+            <label class="chk"><input type="checkbox" data-o="cnClique"> 📍 só clicar: o mobi vai na altura do quadrado onde você clicou (sombra em cima de sombra vai 0,1 acima)</label>
             <div class="cnupst dim"></div>
           </div>
           <div class="cncard">
@@ -6139,6 +6145,8 @@
     $('[data-o="cnModo"]').addEventListener('change', (e) => cnModo(e.target.checked));
     $('[data-o="cnEmCima"]').addEventListener('change', (e) => { CN.emCima = !!e.target.checked; if (CN.emCima) CN.mesma = false; renderCn();
       toast(CN.emCima ? 'Clique num mobi e o próximo vai em cima dele' : 'Em cima do mobi clicado: desligado'); });
+    $('[data-o="cnClique"]').addEventListener('change', (e) => { CN.clique = !!e.target.checked;
+      toast(CN.clique ? 'Agora é só clicar para pôr: eu acerto a altura do quadrado' : 'Altura do clique: desligado'); });
     $('[data-o="cnMesma"]').addEventListener('change', (e) => { CN.mesma = !!e.target.checked; if (CN.mesma) CN.emCima = false; renderCn();
       toast(CN.mesma ? 'Clique num mobi e o próximo fica na mesma altura dele' : 'Mesma altura do mobi clicado: desligado'); });
     $('.wmcanvas').addEventListener('click', (e) => {
@@ -8108,7 +8116,7 @@
   // :spin do Habblet (ensinado por ela): 0 = posição normal, 2 = próximo giro, 4 = próximo, 6 = último giro
   const SPIN_MAX = 6;
   const SPIN_NOME = { 0: 'posição normal', 2: '1º giro', 4: '2º giro', 6: 'último giro' };
-  const CN = { up: 0, upPasso: 0.5, st: 0, sp: 0, timer: {}, enviado: {}, ligado: {}, modo: false, emCima: false, mesma: false };
+  const CN = { up: 0, upPasso: 0.5, st: 0, sp: 0, timer: {}, enviado: {}, ligado: {}, modo: false, emCima: false, mesma: false, clique: false };
   // Compra automática do modo construtor: o mobi que você está colocando acabou no inventário → o próximo clique
   // no jogo compra mais 1 dele (um de cada vez, só quando precisa).
   const CNC = { inv: new Map(), conta: new Map(), carregado: false, carregando: null, pendente: null, comprando: false, comprados: 0, gasto: 0, frags: new Map() };
@@ -8175,6 +8183,7 @@
       const sp = CNC.inv.get(id);
       if (sp == null) { if (!CNC.carregado) cncCarrega(); return; }
       CNC.inv.delete(id);
+      CNC.ultimo = { id, sp }; // a altura do clique ainda precisa saber o que está sendo colocado
       const c = Math.max(0, (CNC.conta.get(sp) || 1) - 1);
       CNC.conta.set(sp, c);
       if (c === 0) { CNC.pendente = sp; toast(`Acabou ${cncNome(sp)}: clique no jogo que eu compro mais 1`); }
@@ -8201,6 +8210,57 @@
     const nome = (S.furni.floor.get(it.spriteId) || {}).name || 'mobi';
     toast(CN.mesma ? `🎯 :up ${cnFmt(alvo)}: o próximo mobi fica na altura de ${nome}` : `⬆ :up ${cnFmt(alvo)}: o próximo mobi vai em cima de ${nome}`);
     cnAgenda('up', 150);
+  }
+  // Altura do clique: ao colocar um mobi num quadrado, o :up vai para o topo do que já está ali; sombra em cima de
+  // sombra vai 0,1 acima (as duas camadas da Martinha). O colocar espera o hotel confirmar o :up e depois segue.
+  let cnFila = Promise.resolve();
+  const ehSombraCls = (c) => /shadow|sombra/i.test(c || '');
+  function cnAlturaDoClique(x, y, spNovo) {
+    let topo = null, deCima = null;
+    for (const o of S.floor.values()) {
+      if (o.x !== x || o.y !== y || /^wf_/.test(classnameOf('floor', o.spriteId) || '')) continue;
+      const t = o.z + (Number.isFinite(o.height) ? o.height : 0);
+      if (topo == null || t > topo) { topo = t; deCima = o; }
+    }
+    const piso = tileHeight(S.room.heightmap, x, y) || 0;
+    let z = topo == null ? piso : topo;
+    if (deCima && ehSombraCls(classnameOf('floor', deCima.spriteId)) && spNovo != null && ehSombraCls(classnameOf('floor', spNovo))) {
+      z = deCima.z + 0.1; // sombra em cima de sombra: camada 0,1 acima
+    }
+    return cnLimite('up', Math.round((z - (macro().placeRel ? piso : 0)) * 100) / 100);
+  }
+  function cnSegura(data, solta) {
+    if (!CN.modo || !CN.clique || S.nivel !== 'total' || S.room.id == null) return false;
+    const tag = Object.prototype.toString.call(data);
+    const u8 = tag === '[object ArrayBuffer]' ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
+    if (!u8 || u8.length < 8) return false;
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    if (dv.getInt16(4) !== OUT.PLACE) return false;
+    const txt = new TextDecoder().decode(u8.subarray(8, 8 + dv.getUint16(6)));
+    if (txt.includes(':w=')) return false; // mobi de parede
+    const [ids, xs, ys] = txt.split(' ');
+    const x = Number(xs), y = Number(ys);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const idNovo = Number(ids);
+    const alvo = cnAlturaDoClique(x, y, CNC.inv.has(idNovo) ? CNC.inv.get(idNovo) : CNC.ultimo && CNC.ultimo.id === idNovo ? CNC.ultimo.sp : null);
+    cnFila = cnFila.then(async () => {
+      try {
+        const ja = upKnown() ? S.up.mode === 'on' && Math.abs(S.up.z - alvo) <= 0.005 : CN.ligado.up && Math.abs(CN.up - alvo) <= 0.005;
+        if (!ja && connected()) {
+          const espera = Math.max(lastCommandAt + 900, S.mutedUntil || 0) - Date.now();
+          if (espera > 0) await sleep(espera);
+          const ok = waitFor(['whisper'], (k, d) => { const u = parseUp(d.text); return !!u && u.mode === 'on' && Math.abs(u.z - alvo) <= 0.01; }, 1500);
+          ownSend = true;
+          try { S.ws.send(encodePacket(OUT.CHAT, (w) => w.str(`:up ${cnFmt(alvo)}`).int(0)).buffer); } finally { ownSend = false; }
+          lastCommandAt = Date.now();
+          CN.up = alvo; CN.ligado.up = true; CN.enviado.up = `:up ${cnFmt(alvo)}`;
+          const inp = ui && ui.root.querySelector('[data-o="cnUp"]');
+          if (inp) inp.value = cnFmt(alvo);
+          await ok; // o hotel confirmou (ou passou o tempo): agora o mobi vai na altura certa
+        }
+      } finally { solta(); renderCn(); }
+    });
+    return true;
   }
   function cnModo(on) {
     CN.modo = !!on;
@@ -8266,6 +8326,7 @@
     $('[data-o="cnModo"]').checked = CN.modo;
     $('[data-o="cnEmCima"]').checked = CN.emCima;
     $('[data-o="cnMesma"]').checked = CN.mesma;
+    $('[data-o="cnClique"]').checked = CN.clique;
     $('.cnview').classList.toggle('desligado', !CN.modo);
     $('.cncompra').innerHTML = !CN.modo ? '' : (CNC.pendente != null ? `<span class="warn">Acabou ${esc(cncNome(CNC.pendente))}: clique no jogo que eu compro mais 1.</span> ` : '') +
       (CNC.comprados ? `🛒 comprei ${CNC.comprados} mobi(s) neste modo (${CNC.gasto} moedas).` : '🛒 compra automática pronta.');
