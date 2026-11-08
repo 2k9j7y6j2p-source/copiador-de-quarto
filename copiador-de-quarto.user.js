@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.27
+// @version      3.0.28
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.27';
+  const VERSION = '3.0.28';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -805,7 +805,8 @@
 
   // Boas-vindas em cima do chat, só na tela de quem usa o plugin (não vai para o chat do quarto).
   const WELCOME = 'Bem-Vindo ao SCRIPT do Cobra - DC vinipetter';
-  const WELCOME_VIP = 'Versão VIP contatar DISCORD: vinipetter'; // logo depois das boas-vindas, para quem não tem tudo
+  const WELCOME_VIP = 'Versão VIP contatar DISCORD: vinipetter';
+  const CONTATO = 'Entrar em contato DC: vinipetter'; // vai em toda mensagem de acesso negado // logo depois das boas-vindas, para quem não tem tudo
   let welcomed = false;
   function showWelcome() {
     if (welcomed || !S.liberado || S.bloqueado || !ui || !ui.root || typeof document === 'undefined' || !S.me || !S.me.name) return;
@@ -840,7 +841,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso", "construtora", "halloween"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso", "construtora", "halloween"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
@@ -1819,8 +1820,8 @@
   };
 
   const saveCurrentRoom = () => {
-    if (S.nivel === 'wired') throw new Error('sua conta tem acesso só aos wired');
-    if (S.nivel === 'construcao') throw new Error('sua conta tem acesso só ao ajudante de construção');
+    if (S.nivel === 'wired') throw new Error(`sua conta tem acesso só aos wired. ${CONTATO}`);
+    if (S.nivel === 'construcao') throw new Error(`sua conta tem acesso só ao ajudante de construção. ${CONTATO}`);
     if (roomProtected()) throw new Error('quarto autoral: o dono protegeu contra cópia');
     if (!S.floor.size && !S.wall.size) throw new Error('nenhum mobi capturado neste quarto');
     return setCopy(normalizeCopy(snapshotWithFloorCode()));
@@ -6403,14 +6404,14 @@
     });
   }
 
-  function toast(msg, isError) {
+  function toast(msg, isError, ms) {
     if (!ui) return;
     const t = ui.root.querySelector('.toast');
     t.textContent = msg;
     t.classList.toggle('err', !!isError);
     t.classList.add('show');
     clearTimeout(t._h);
-    t._h = setTimeout(() => t.classList.remove('show'), 2400);
+    t._h = setTimeout(() => t.classList.remove('show'), ms || 2400);
   }
 
   function download(filename, text, mime) {
@@ -6498,8 +6499,8 @@
   // Conta só de wired: ler, copiar e colar wired (wm…), aprender (apr…) e as categorias do guia.
   const SO_WIRED_OK = (a) => /^(wm|apr|cn)/.test(a) || ['wcat', 'close', 'stop', 'diag'].includes(a);
   async function action(a, el) {
-    if (S.nivel === 'wired' && !SO_WIRED_OK(a)) { toast('Sua conta tem acesso só aos wired (ler, copiar e colar).', true); return; }
-    if (S.nivel === 'construcao' && !/^cn/.test(a)) { toast('Sua conta tem acesso só ao Ajudante de construção.', true); return; }
+    if (S.nivel === 'wired' && !SO_WIRED_OK(a)) { toast(`Acesso negado: sua conta tem só os wired (ler, copiar e colar). ${CONTATO}`, true, 5000); return; }
+    if (S.nivel === 'construcao' && !/^cn/.test(a)) { toast(`Acesso negado: sua conta tem só o Ajudante de construção. ${CONTATO}`, true, 5000); return; }
     const $ = (sel) => ui.root.querySelector(sel);
     const fail = (e) => { S.authMsg = `<span class="bad">✗ ${esc(e.message)}</span>`; };
     if (a === 'loginUser') {
