@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.28
+// @version      3.0.29
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.28';
+  const VERSION = '3.0.29';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -841,7 +841,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso", "construtora", "halloween"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso", "construtora", "halloween", "halloween."], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
@@ -5070,7 +5070,7 @@
   // ---- Amigos do app em verde: na barra de amigos de baixo e na lista do console, o nome dos nicks marcados (por
   // padrão os liberados do app) aparece na fonte verde das mensagens. Só na sua tela; nada vai para o hotel.
   const MARCA_KEY = 'copiadorDeQuarto.marcados.v1';
-  const MARCA_PADRAO = ['cobra', 'martinha', 'criminoso', 'halloween'];
+  const MARCA_PADRAO = ['cobra', 'martinha', 'criminoso', 'halloween', 'halloween.'];
   const MARCA = { on: true, ...(store.get(MARCA_KEY) || {}) };
   MARCA.nicks = [...new Set([...MARCA_PADRAO, ...(Array.isArray(MARCA.nicks) ? MARCA.nicks : [])])]; // os novos do padrão sempre entram
   const nickDe = (s) => String(s || '').replace(/^@/, '').trim().toLowerCase();
