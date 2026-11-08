@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.5
+// @version      3.0.7
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.4';
+  const VERSION = '3.0.7';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -798,6 +798,38 @@
     S.me = { id, name: name || (S.me && S.me.id === id ? S.me.name : '') || '' };
     store.set(ME_KEY, S.me);
     restoreLogin();
+    checkTrava();
+  }
+
+  // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
+  // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
+  const TRAVA = {"nicks": ["cobra", "martinha"], "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Este plugin foi desativado."};
+  S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
+  S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
+  function checkTrava() {
+    if (!TRAVA || !S.me || !S.me.name) return;
+    const nick = String(S.me.name).replace(/^@/, '').trim().toLowerCase();
+    const host = typeof document !== 'undefined' && document.getElementById('copiador-de-quarto');
+    if (TRAVA.nicks.includes(nick)) { S.bloqueado = false; S.liberado = true; if (host) host.style.display = ''; return; }
+    S.bloqueado = true;
+    if (host) host.remove();
+    if (typeof document === 'undefined' || !document.body || document.getElementById('copiador-aviso')) return;
+    const msg = (TRAVA.msgs || {})[nick] || TRAVA.padrao || 'Este plugin foi desativado.';
+    const box = document.createElement('div');
+    box.id = 'copiador-aviso';
+    box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:Arial,sans-serif;';
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#b00020;color:#fff;padding:32px 40px;border-radius:12px;text-align:center;max-width:80vw;box-shadow:0 8px 40px rgba(0,0,0,.6);';
+    const txt = document.createElement('div');
+    txt.textContent = msg;
+    txt.style.cssText = 'font-size:40px;font-weight:900;letter-spacing:1px;line-height:1.2;';
+    const ok = document.createElement('button');
+    ok.textContent = 'OK';
+    ok.style.cssText = 'margin-top:22px;font-size:18px;padding:8px 28px;border:0;border-radius:8px;background:#fff;color:#b00020;font-weight:700;cursor:pointer;';
+    ok.addEventListener('click', () => box.remove());
+    card.append(txt, ok);
+    box.append(card);
+    document.body.append(box);
   }
 
   // Mobi seu? (Sem saber quem é você, considera todos seus, como antes.)
@@ -1017,6 +1049,7 @@
   }
 
   function onPacket(header, body, ws) {
+    if (S.bloqueado) return;
     S.stats.packets++;
     S.recent.push([header, body.length]); // só número e tamanho, para o diagnóstico
     if (S.recent.length > 300) S.recent.shift();
@@ -1076,7 +1109,7 @@
     const nativeSend = ws.send;
     ws.send = function (data) {
       if (S.rec) { try { recordOut(data); } catch (_) { /* ignorado */ } }
-      if (!ownSend) {
+      if (!ownSend && !S.bloqueado) {
         let walk = null, chat = null;
         try { walk = walkOf(data); chat = walk ? null : chatOf(data); } catch (_) { /* ignorado */ }
         // Montando wired: o clique escolhe o quadrado / o mobi e o boneco não anda.
@@ -5530,9 +5563,11 @@
       document.addEventListener('DOMContentLoaded', () => { mounting = false; mountUI(); }, { once: true });
       return;
     }
+    if (S.bloqueado) return;
     const host = document.createElement('div');
     host.id = 'copiador-de-quarto';
     host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;';
+    if (!S.liberado) host.style.display = 'none';
     const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `
       <style>${CSS}</style>
@@ -7596,7 +7631,17 @@
     } catch (e) { toast('Erro: ' + e.message, true); }
     wmReset('');
   }
+  // Um clique no jogo pode chegar em dois pacotes (o clique no mobi e o boneco olhando para o quadrado). O segundo,
+  // logo depois e no mesmo lugar, não é um clique novo: antes ele preenchia sozinho o passo seguinte com o mesmo mobi.
+  function wmEcho(x, y, id) {
+    const p = WM.lastTap, now = Date.now();
+    const mesmoLugar = x === p?.x && y === p?.y && (id == null || p.id == null);
+    if (p && now - p.t < 700 && ((id != null && id === p.id) || mesmoLugar)) return true;
+    WM.lastTap = { t: now, x, y, id };
+    return false;
+  }
   function wmTap(x, y, furniId) {
+    if (wmEcho(x, y, furniId)) return;
     if (WM.step === 'tile') {
       WM.tile = { x, y };
       if (WM.mode === 'copy') { wcopyConfirm(); return; }
@@ -7616,6 +7661,7 @@
     }
     const it = furniId != null && S.floor.has(furniId) ? S.floor.get(furniId) : topFurniAt(x, y);
     if (!it) { gameNotice(`não achei mobi em x=${x} y=${y}: clique em cima de ${r}`); return; }
+    WM.lastTap.id = it.id; // o pacote que vier depois com o id deste mobi também é o mesmo clique
     const list = WM.picks[k] || (WM.picks[k] = []);
     const nome = (S.furni.floor.get(it.spriteId) || {}).name || 'mobi';
     if (list.includes(it.id)) { gameNotice(`${nome} já está escolhido`); return; }
