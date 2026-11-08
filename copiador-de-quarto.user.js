@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Copiador de Quarto (Habbo / Nitro)
+// @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.31
-// @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
+// @version      3.0.32
+// @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.31';
+  const VERSION = '3.0.32';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
