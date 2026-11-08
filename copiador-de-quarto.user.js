@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.23
+// @version      3.0.24
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.23';
+  const VERSION = '3.0.24';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -826,10 +826,10 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso"], "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso"], "resto": "construcao", "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
-  S.nivel = 'total';        // 'total' = tudo; 'wired' = só ler, copiar e colar wired (sem copiar quarto)
+  S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
   function checkTrava() {
     if (!TRAVA || !S.me || !S.me.name) return;
     const nick = String(S.me.name).replace(/^@/, '').trim().toLowerCase();
@@ -837,6 +837,13 @@
     const soWired = (TRAVA.wired || []).includes(nick);
     if (TRAVA.nicks.includes(nick) || soWired) {
       S.bloqueado = false; S.liberado = true; S.nivel = soWired ? 'wired' : 'total';
+      if (host) host.style.display = '';
+      if (typeof scheduleRender === 'function') scheduleRender();
+      return;
+    }
+    // os outros nicks (menos os bloqueados com aviso próprio): só o ajudante de construção
+    if (TRAVA.resto === 'construcao' && !(TRAVA.msgs || {})[nick]) {
+      S.bloqueado = false; S.liberado = true; S.nivel = 'construcao';
       if (host) host.style.display = '';
       if (typeof scheduleRender === 'function') scheduleRender();
       return;
@@ -1799,6 +1806,7 @@
 
   const saveCurrentRoom = () => {
     if (S.nivel === 'wired') throw new Error('sua conta tem acesso só aos wired');
+    if (S.nivel === 'construcao') throw new Error('sua conta tem acesso só ao ajudante de construção');
     if (roomProtected()) throw new Error('quarto autoral: o dono protegeu contra cópia');
     if (!S.floor.size && !S.wall.size) throw new Error('nenhum mobi capturado neste quarto');
     return setCopy(normalizeCopy(snapshotWithFloorCode()));
@@ -6470,9 +6478,10 @@
   }
 
   // Conta só de wired: ler, copiar e colar wired (wm…), aprender (apr…) e as categorias do guia.
-  const SO_WIRED_OK = (a) => /^(wm|apr)/.test(a) || ['wcat', 'close', 'stop', 'diag'].includes(a);
+  const SO_WIRED_OK = (a) => /^(wm|apr|cn)/.test(a) || ['wcat', 'close', 'stop', 'diag'].includes(a);
   async function action(a, el) {
     if (S.nivel === 'wired' && !SO_WIRED_OK(a)) { toast('Sua conta tem acesso só aos wired (ler, copiar e colar).', true); return; }
+    if (S.nivel === 'construcao' && !/^cn/.test(a)) { toast('Sua conta tem acesso só ao Ajudante de construção.', true); return; }
     const $ = (sel) => ui.root.querySelector(sel);
     const fail = (e) => { S.authMsg = `<span class="bad">✗ ${esc(e.message)}</span>`; };
     if (a === 'loginUser') {
@@ -8217,7 +8226,7 @@
   }
   // o que o jogo manda: colocar mobi (conta o inventário) e o clique depois que acabou (compra mais 50)
   function cncOut(data) {
-    if (!CN.modo || S.nivel !== 'total' || S.room.id == null) return;
+    if (!CN.modo || S.room.id == null) return;
     const tag = Object.prototype.toString.call(data);
     const u8 = tag === '[object ArrayBuffer]' ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
     if (!u8 || u8.length < 8) return;
@@ -8278,7 +8287,7 @@
     return cnLimite('up', Math.round((z - (macro().placeRel ? piso : 0)) * 100) / 100);
   }
   function cnSegura(data, solta) {
-    if (!CN.modo || !CN.clique || S.nivel !== 'total' || S.room.id == null) return false;
+    if (!CN.modo || !CN.clique || S.room.id == null) return false;
     const tag = Object.prototype.toString.call(data);
     const u8 = tag === '[object ArrayBuffer]' ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
     if (!u8 || u8.length < 8) return false;
@@ -9291,8 +9300,11 @@
     ui.root.querySelector('.n').textContent = String(total);
     ui.root.querySelector('.mkon').hidden = S.markMode !== 'game';
     ui.root.querySelector('.mkon').textContent = S.lvPick.size ? `📍 ${S.lvPick.size} · ` : '📍 marcador · ';
-    ui.fabcn.hidden = S.nivel === 'wired'; // conta só de wired não tem o ajudante de construção
-    if (ui.fabcn.hidden) ui.cnpanel.hidden = true;
+    // conta só do ajudante de construção: o copiador some e fica só o botão do ajudante
+    const soCn = S.nivel === 'construcao';
+    ui.fab.hidden = soCn;
+    if (soCn) ui.panel.hidden = true;
+    ui.fabcn.style.bottom = soCn ? '96px' : '';
     renderCn(); // a janela do ajudante se atualiza junto (só faz algo se estiver aberta)
     if (ui.panel.hidden) return;
 
