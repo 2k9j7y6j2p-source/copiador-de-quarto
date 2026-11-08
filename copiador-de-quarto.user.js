@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.18
+// @version      3.0.21
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.18';
+  const VERSION = '3.0.21';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -5425,7 +5425,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
-        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), get state() { return CN; }, get compra() { return CNC; } },
+        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -5859,13 +5859,13 @@
         </details>
         <div class="row2">
           <div class="tabs">
-            <button data-t="floor" aria-selected="true">📦 Mobis</button>
-            <button data-t="paste" class="tab-paste" title="Colar no meu quarto">🏠 Colar</button>
+            <button data-t="paste" class="tab-paste" title="Colar no meu quarto" aria-selected="true">🏠 Colar</button>
             <button data-t="wired">⚡ Wired</button>
             <button data-t="aprender" title="Aprender wired junto">🎓 Aprender</button>
             <button data-t="construtor" title="Ferramenta para construtores">🧰 Construtor</button>
             <button data-t="build">🧱 Construções</button>
             <button class="more" type="button">mais ▸</button>
+            <button data-t="floor" class="t2" title="Lista dos mobis do quarto">📦 Mobis</button>
             <button data-t="level" class="t2">🟫 Piso</button>
             <button data-t="cat" class="t2">🛒 Catálogo</button>
             <button data-t="shop" class="t2">🧾 Compras</button>
@@ -5958,6 +5958,8 @@
               <button data-a="cnUpMais" title="aumentar">▲</button>
               <label class="dim">passo <select data-o="cnUpPasso"><option>0.01</option><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select></label>
               <button data-a="cnUpDesliga">desligar</button></div>
+            <label class="chk"><input type="checkbox" data-o="cnEmCima"> 📐 clicar num mobi põe o :up no topo dele (o próximo mobi vai em cima, apoiado)</label>
+            <label class="chk"><input type="checkbox" data-o="cnMesma"> 🎯 clicar num mobi põe o :up na mesma altura dele (o mais usado nas sombras)</label>
             <div class="cnupst dim"></div>
           </div>
           <div class="cncard">
@@ -6116,7 +6118,7 @@
     document.documentElement.appendChild(host);
 
     const $ = (sel) => root.querySelector(sel);
-    ui = { root, host, fab: $('.fab'), panel: $('.panel'), tab: 'floor', filter: '' };
+    ui = { root, host, fab: $('.fab'), panel: $('.panel'), tab: 'paste', filter: '' };
 
     ui.fab.addEventListener('click', () => {
       ui.panel.hidden = !ui.panel.hidden;
@@ -6135,6 +6137,10 @@
     }
     $('[data-o="cnUpPasso"]').addEventListener('change', (e) => { CN.upPasso = Number(e.target.value) || 0.5; $('[data-o="cnUp"]').step = String(CN.upPasso); });
     $('[data-o="cnModo"]').addEventListener('change', (e) => cnModo(e.target.checked));
+    $('[data-o="cnEmCima"]').addEventListener('change', (e) => { CN.emCima = !!e.target.checked; if (CN.emCima) CN.mesma = false; renderCn();
+      toast(CN.emCima ? 'Clique num mobi e o próximo vai em cima dele' : 'Em cima do mobi clicado: desligado'); });
+    $('[data-o="cnMesma"]').addEventListener('change', (e) => { CN.mesma = !!e.target.checked; if (CN.mesma) CN.emCima = false; renderCn();
+      toast(CN.mesma ? 'Clique num mobi e o próximo fica na mesma altura dele' : 'Mesma altura do mobi clicado: desligado'); });
     $('.wmcanvas').addEventListener('click', (e) => {
       const cv = e.currentTarget, cell = cv.__cell || 8, r = cv.getBoundingClientRect();
       const x = Math.floor((e.clientX - r.left) * (cv.width / r.width) / cell), y = Math.floor((e.clientY - r.top) * (cv.height / r.height) / cell);
@@ -6477,7 +6483,7 @@
       render();
       return;
     }
-    if (a === 'logout') { logout(); ui.tab = 'floor'; S.authMsg = ''; render(); return; }
+    if (a === 'logout') { logout(); ui.tab = 'paste'; S.authMsg = ''; render(); return; }
     if (a === 'giveRole') {
       try {
         $('.givecode').value = await issueCode($('[data-o="giveName"]').value, $('[data-o="giveDays"]').value);
@@ -6494,7 +6500,7 @@
       return;
     }
     if (a === 'ceoForget') {
-      if (W.confirm('Apagar a chave de CEO deste navegador? Sem o backup, você não consegue mais gerar códigos.')) { ceoForget(); ui.tab = 'floor'; }
+      if (W.confirm('Apagar a chave de CEO deste navegador? Sem o backup, você não consegue mais gerar códigos.')) { ceoForget(); ui.tab = 'paste'; }
       render();
       return;
     }
@@ -8102,7 +8108,7 @@
   // :spin do Habblet (ensinado por ela): 0 = posição normal, 2 = próximo giro, 4 = próximo, 6 = último giro
   const SPIN_MAX = 6;
   const SPIN_NOME = { 0: 'posição normal', 2: '1º giro', 4: '2º giro', 6: 'último giro' };
-  const CN = { up: 0, upPasso: 0.5, st: 0, sp: 0, timer: {}, enviado: {}, ligado: {}, modo: false };
+  const CN = { up: 0, upPasso: 0.5, st: 0, sp: 0, timer: {}, enviado: {}, ligado: {}, modo: false, emCima: false, mesma: false };
   // Compra automática do modo construtor: o mobi que você está colocando acabou no inventário → o próximo clique
   // no jogo compra mais 1 dele (um de cada vez, só quando precisa).
   const CNC = { inv: new Map(), conta: new Map(), carregado: false, carregando: null, pendente: null, comprando: false, comprados: 0, gasto: 0, frags: new Map() };
@@ -8174,11 +8180,27 @@
       if (c === 0) { CNC.pendente = sp; toast(`Acabou ${cncNome(sp)}: clique no jogo que eu compro mais 1`); }
       return;
     }
+    if (h === 355 && (CN.emCima || CN.mesma) && u8.length >= 10) cnEmCimaDe(dv.getInt32(6));
     if (CNC.pendente != null && (h === OUT.WALK || h === OUT.LOOK || h === OUT.USE || h === 355)) {
       const sp = CNC.pendente;
       CNC.pendente = null;
       cncCompra(sp);
     }
+  }
+  // Clicou num mobi: "em cima" põe o :up no topo dele (altura + tamanho), para o próximo ficar apoiado;
+  // "mesma altura" põe o :up exatamente na altura dele (sombras).
+  function cnEmCimaDe(id) {
+    const it = S.floor.get(id);
+    if (!it || !Number.isFinite(it.z)) return;
+    const topo = it.z + (CN.mesma ? 0 : Number.isFinite(it.height) ? it.height : 0);
+    const alvo = cnLimite('up', Math.round((topo - (macro().placeRel ? tileHeight(S.room.heightmap, it.x, it.y) : 0)) * 100) / 100);
+    if (CN.ligado.up && Math.abs(alvo - CN.up) < 0.005) return; // já está nessa altura
+    CN.up = alvo;
+    const inp = ui && ui.root.querySelector('[data-o="cnUp"]');
+    if (inp) inp.value = cnFmt(alvo);
+    const nome = (S.furni.floor.get(it.spriteId) || {}).name || 'mobi';
+    toast(CN.mesma ? `🎯 :up ${cnFmt(alvo)}: o próximo mobi fica na altura de ${nome}` : `⬆ :up ${cnFmt(alvo)}: o próximo mobi vai em cima de ${nome}`);
+    cnAgenda('up', 150);
   }
   function cnModo(on) {
     CN.modo = !!on;
@@ -8242,6 +8264,8 @@
     if (!ui || ui.tab !== 'construtor') return;
     const $ = (q) => ui.root.querySelector(q);
     $('[data-o="cnModo"]').checked = CN.modo;
+    $('[data-o="cnEmCima"]').checked = CN.emCima;
+    $('[data-o="cnMesma"]').checked = CN.mesma;
     $('.cnview').classList.toggle('desligado', !CN.modo);
     $('.cncompra').innerHTML = !CN.modo ? '' : (CNC.pendente != null ? `<span class="warn">Acabou ${esc(cncNome(CNC.pendente))}: clique no jogo que eu compro mais 1.</span> ` : '') +
       (CNC.comprados ? `🛒 comprei ${CNC.comprados} mobi(s) neste modo (${CNC.gasto} moedas).` : '🛒 compra automática pronta.');
@@ -9189,7 +9213,7 @@
     role.className = 'role ' + (AUTH.logged ? AUTH.role : '');
     ui.root.querySelector('.lo').hidden = !LOGIN_ON || !AUTH.logged;
     ui.root.querySelector('[data-t="ceo"]').hidden = AUTH.role !== 'ceo';
-    if (AUTH.role !== 'ceo' && ui.tab === 'ceo') ui.tab = 'floor';
+    if (AUTH.role !== 'ceo' && ui.tab === 'ceo') ui.tab = 'paste';
     ui.root.querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.t === ui.tab)));
     const sel2 = ui.root.querySelector(`.tabs [data-t="${ui.tab}"]`);
     if (sel2 && sel2.classList.contains('t2') && !ui.root.querySelector('.tabs').classList.contains('open')) {
