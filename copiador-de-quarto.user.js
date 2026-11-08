@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.11
+// @version      3.0.12
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.11';
+  const VERSION = '3.0.12';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -837,18 +837,32 @@
     S.bloqueado = true;
     if (host) host.remove();
     if (typeof document === 'undefined' || !document.body || document.getElementById('copiador-aviso')) return;
-    const msg = (TRAVA.msgs || {})[nick] || TRAVA.padrao || 'Este plugin foi desativado.';
+    const proprio = (TRAVA.msgs || {})[nick];
+    const msg = proprio || TRAVA.padrao || 'Este plugin foi desativado.';
     const box = document.createElement('div');
     box.id = 'copiador-aviso';
     box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:Arial,sans-serif;';
     const card = document.createElement('div');
-    card.style.cssText = 'background:#b00020;color:#fff;padding:32px 40px;border-radius:12px;text-align:center;max-width:80vw;box-shadow:0 8px 40px rgba(0,0,0,.6);';
     const txt = document.createElement('div');
     txt.textContent = msg;
-    txt.style.cssText = 'font-size:40px;font-weight:900;letter-spacing:1px;line-height:1.2;';
     const ok = document.createElement('button');
     ok.textContent = 'OK';
-    ok.style.cssText = 'margin-top:22px;font-size:18px;padding:8px 28px;border:0;border-radius:8px;background:#fff;color:#b00020;font-weight:700;cursor:pointer;';
+    if (proprio) { // aviso feito para um nick (ex.: Construtora): vermelho
+      card.style.cssText = 'background:#b00020;color:#fff;padding:32px 40px;border-radius:12px;text-align:center;max-width:80vw;box-shadow:0 8px 40px rgba(0,0,0,.6);';
+      txt.style.cssText = 'font-size:40px;font-weight:900;letter-spacing:1px;line-height:1.2;';
+      ok.style.cssText = 'margin-top:22px;font-size:18px;padding:8px 28px;border:0;border-radius:8px;background:#fff;color:#b00020;font-weight:700;cursor:pointer;';
+    } else { // sem acesso: o mesmo verde das boas-vindas, com brilho leve
+      const st = document.createElement('style');
+      st.textContent = '@keyframes copiadorAvisoBrilho{0%,100%{text-shadow:0 0 3px rgba(75,224,143,.35);box-shadow:0 0 10px rgba(75,224,143,.12)}' +
+        '50%{text-shadow:0 0 8px rgba(75,224,143,.6);box-shadow:0 0 18px rgba(75,224,143,.25)}}';
+      box.append(st);
+      card.style.cssText = 'background:rgba(4,12,7,.9);color:#9cf5c2;padding:26px 34px;border:1px solid rgba(75,224,143,.4);border-radius:16px;text-align:center;' +
+        'max-width:80vw;animation:copiadorAvisoBrilho 2.8s ease-in-out infinite;';
+      txt.style.cssText = 'font:600 22px "JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;letter-spacing:.6px;line-height:1.45;' +
+        'text-shadow:0 0 3px rgba(75,224,143,.45);animation:copiadorAvisoBrilho 2.8s ease-in-out infinite;';
+      ok.style.cssText = 'margin-top:20px;font:600 14px "JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;padding:7px 26px;border-radius:999px;' +
+        'border:1px solid rgba(75,224,143,.55);background:rgba(75,224,143,.12);color:#9cf5c2;cursor:pointer;';
+    }
     ok.addEventListener('click', () => box.remove());
     card.append(txt, ok);
     box.append(card);
