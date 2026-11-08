@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.8
+// @version      3.0.9
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.8';
+  const VERSION = '3.0.9';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -1131,6 +1131,7 @@
     const nativeSend = ws.send;
     ws.send = function (data) {
       if (S.rec) { try { recordOut(data); } catch (_) { /* ignorado */ } }
+      if (!S.bloqueado) { try { aprOut(data); } catch (_) { /* ignorado */ } }
       if (!ownSend && !S.bloqueado) {
         let walk = null, chat = null;
         try { walk = walkOf(data); chat = walk ? null : chatOf(data); } catch (_) { /* ignorado */ }
@@ -5323,6 +5324,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
+        aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
           get copied() { return S.wcopy; } },
@@ -5654,6 +5656,11 @@
       background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .5); color: #fff; text-decoration: none;
     }
     .wg h4, .wmview h4 { font-size: 13px; }
+    .aprview { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
+    .aprview > * { flex-shrink: 0; }
+    .aprview[hidden] { display: none !important; }
+    /* o que já foi ensinado não aparece mais (o aprendido continua guardado e em uso) */
+    .lvlearn, [data-a="learnHeight"] { display: none !important; }
     /* boas-vindas em cima do chat: brilho leve */
     .welcome {
       position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 8px); pointer-events: none; text-align: center;
@@ -5738,8 +5745,9 @@
         <div class="row2">
           <div class="tabs">
             <button data-t="floor" aria-selected="true">📦 Mobis</button>
-            <button data-t="paste" class="tab-paste">🏠 Colar no meu quarto</button>
+            <button data-t="paste" class="tab-paste" title="Colar no meu quarto">🏠 Colar</button>
             <button data-t="wired">⚡ Wired</button>
+            <button data-t="aprender" title="Aprender wired junto">🎓 Aprender</button>
             <button data-t="build">🧱 Construções</button>
             <button data-t="level">🟫 Piso</button>
             <button class="more" type="button">mais ▸</button>
@@ -5747,7 +5755,6 @@
             <button data-t="shop" class="t2">🧾 Compras</button>
             <button data-t="wall" class="t2">🖼 Parede</button>
             <button data-t="map" class="t2">🗺 Floor</button>
-            <button data-t="claude" class="t2">🤖 Claude</button>
             <button data-t="obras" class="t2">🛡 Anticópia</button>
             <button data-t="ceo" class="tab-ceo t2" hidden>ceo</button>
           </div>
@@ -5818,6 +5825,19 @@
               (comprando o que faltar) e programo cada wired com a configuração lida, trocando os mobis e as variáveis pelos novos.</div>
             <details class="lvpad"><summary>todas as pilhas lidas</summary><div class="wmreadout"></div></details>
           </div>
+        </div>
+        <div class="aprview" hidden>
+          <div class="lvpad"><b>🎓 Aprender wired junto</b> <span class="dim">Ligue e fique no quarto enquanto alguém monta: eu leio cada wired que aparece,
+            muda de lugar ou é salvo (como o clique duplo faz) e guardo a configuração de cada pilha, com o que mudou e quando. A cada minuto
+            releio todos, para pegar o que os outros mudaram.</span></div>
+          <div class="actions"><button class="primary" data-a="aprToggle">👀 aprender junto</button>
+            <button data-a="aprAgora">reler tudo agora</button>
+            <button data-a="aprGuardar">guardar em ⭐ PERSONALIZADOS</button>
+            <button data-a="aprCopiar">copiar o que aprendi</button></div>
+          <div class="lvpad aprst dim"></div>
+          <div class="lvpad"><b>O que mudou</b></div>
+          <div class="lvpad apreventos"></div>
+          <details class="lvpad"><summary>pilhas aprendidas</summary><div class="aprpilhas"></div></details>
         </div>
         <div class="buildview" hidden>
           <div class="lvpad"><b>Aprender uma construção</b> <span class="dim">Clique em <b>Iniciar</b>, monte no quarto do seu jeito e clique em
@@ -6354,6 +6374,10 @@
     if (a === 'wmUndo') { if (WM.step === 'role') { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l && l.length) l.pop(); render(); } return; }
     if (a === 'wmRepick') { wmRepick(+el.dataset.id); return; }
     if (a === 'wmCancel') { wmReset('Montagem cancelada'); return; }
+    if (a === 'aprToggle') { aprToggle(); return; }
+    if (a === 'aprAgora') { if (!APR.on) aprToggle(); else { APR.volta = Date.now(); aprPoe(aprWiredIds()); renderApr(); } return; }
+    if (a === 'aprGuardar') { try { aprGuardar(); } catch (e) { toast('Erro: ' + e.message, true); } return; }
+    if (a === 'aprCopiar') { const t = aprTexto(); if (!t) { toast('Ainda não aprendi nenhuma pilha', true); return; } copied(await copy(t), 'Copiado: o que aprendi deste quarto'); return; }
     if (a === 'wmRead') { if (WREAD.run) { WREAD.run = false; renderWm(); } else readRoomWired().catch((e) => toast('Erro: ' + e.message, true)); return; }
     if (a === 'wmClaude') { copied(await copy(wmClaudeText(ui.wmAsk || '')), 'Pedido copiado: cole no Claude'); return; }
     if (a === 'wmApi') { wmAskApi().catch((e) => { API.run = false; toast('Erro: ' + e.message, true); }); return; }
@@ -6748,7 +6772,7 @@
       ? `<span class="warn"><b>Observando…</b></span> Agora, no quarto: <b>clique em um mobi seu</b> e digite o comando de altura no chat, por exemplo <b>:up 1.5</b>.`
       : learned
         ? `<b>Altura:</b> <span class="ok">✓ aprendido</span>: ${esc(describeMacro(m))}` + upStatus()
-        : `<b>Altura:</b> vou usar <b>${esc(m.command)}</b> em cada mobi. Se quiser que o script clique no mobi do mesmo jeito que você, use <b>Ensinar comando de altura</b>.`;
+        : `<b>Altura:</b> vou usar <b>${esc(m.command)}</b> em cada mobi.`;
   }
 
   function renderPaste() {
@@ -7900,6 +7924,147 @@
     WREAD.run = false;
     renderWm();
   }
+  // ---- Aprender wired: aprende junto enquanto alguém monta os wired do quarto
+  //
+  // Ligado, cada wired que aparece, muda de lugar ou que você salva entra na fila e é lido de novo (como o clique duplo
+  // faz). De tempos em tempos todos são relidos, para pegar o que os outros mudaram (o hotel não avisa quem só está
+  // olhando). Guarda a configuração de cada pilha e a linha do tempo do que mudou; as leituras também servem para o
+  // "Ler wired" e para copiar.
+  const APR = { on: false, room: null, fila: [], lendo: false, defs: new Map(), pos: new Map(), eventos: [], volta: 0, lidos: 0 };
+  const APR_SAVE = new Set(Object.values(WIRED_SAVE));
+  const aprSig = (d) => (d ? JSON.stringify([d.i, d.s, d.ids, d.delay, d.fs, d.us, d.quant, d.filter, d.invert, d.vars]) : '');
+  function aprReset() { Object.assign(APR, { room: S.room.id, fila: [], defs: new Map(), pos: new Map(), eventos: [], volta: 0, lidos: 0 }); }
+  function aprWiredIds() { return [...S.floor.values()].filter((o) => isWiredCls(classnameOf('floor', o.spriteId))).map((o) => o.id); }
+  function aprPoe(ids) {
+    if (!APR.on) return;
+    for (const id of [].concat(ids)) if (!APR.fila.includes(id)) APR.fila.push(id);
+    aprLer();
+  }
+  function aprEvento(tipo, it, def, antes) {
+    APR.eventos.unshift({ t: Date.now(), tipo, it: { id: it.id, x: it.x, y: it.y, spriteId: it.spriteId }, def, antes });
+    if (APR.eventos.length > 200) APR.eventos.length = 200;
+  }
+  let aprRenderT = null;
+  const aprRenderSoon = () => { clearTimeout(aprRenderT); aprRenderT = setTimeout(() => { if (ui && ui.tab === 'aprender') renderApr(); }, 250); };
+  async function aprLer() {
+    if (APR.lendo) return;
+    APR.lendo = true;
+    try {
+      let falhas = 0;
+      while (APR.on && APR.fila.length && connected()) {
+        if (APR.room !== S.room.id) { aprReset(); APR.fila = aprWiredIds(); continue; }
+        if (job || WREAD.run) { await sleep(1500); continue; } // não atrapalha colagem nem o "Ler wired"
+        const id = APR.fila.shift();
+        const it = S.floor.get(id);
+        if (!it || !isWiredCls(classnameOf('floor', it.spriteId))) continue;
+        let def = null;
+        try { def = await openWired(id, 1500); } catch (_) { break; }
+        if (!def) {
+          if (++falhas >= 6) { APR.fila.push(id); falhas = 0; APR.msg = 'o hotel pediu uma pausa: continuo em 25 s'; aprRenderSoon(); await sleep(25000); APR.msg = ''; }
+          continue;
+        }
+        falhas = 0;
+        APR.lidos++;
+        WREAD.defs.set(id, def);
+        if (WREAD.room !== S.room.id) WREAD.room = S.room.id;
+        const antes = APR.defs.get(id), p = APR.pos.get(id);
+        APR.defs.set(id, def);
+        APR.pos.set(id, { id, x: it.x, y: it.y, spriteId: it.spriteId });
+        if (!antes) aprEvento('novo', it, def);
+        else if (aprSig(antes) !== aprSig(def)) aprEvento('mudou', it, def, antes);
+        else if (p && (p.x !== it.x || p.y !== it.y)) aprEvento('mudou de lugar', it, def);
+        aprRenderSoon();
+        await sleep(550);
+      }
+    } finally { APR.lendo = false; aprRenderSoon(); }
+  }
+  // o que muda no quarto
+  listen((kind, d) => {
+    if (!APR.on || S.room.id == null) return;
+    if (kind === 'floorList') { aprReset(); setTimeout(() => aprPoe(aprWiredIds()), 1500); return; }
+    if ((kind === 'floorAdd' || kind === 'floorUpdate') && d && isWiredCls(classnameOf('floor', d.spriteId))) { setTimeout(() => aprPoe(d.id), 1200); return; }
+    if (kind === 'floorRemove' && APR.pos.has(d)) {
+      aprEvento('saiu', APR.pos.get(d), APR.defs.get(d));
+      APR.defs.delete(d); APR.pos.delete(d);
+      aprRenderSoon();
+    }
+  });
+  // o que você salva num wired: lê na hora
+  function aprOut(data) {
+    if (!APR.on) return;
+    const tag = Object.prototype.toString.call(data);
+    const u8 = tag === '[object ArrayBuffer]' ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
+    if (!u8 || u8.length < 10) return;
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    if (!APR_SAVE.has(dv.getInt16(4))) return;
+    const id = dv.getInt32(6);
+    setTimeout(() => aprPoe(id), 800);
+  }
+  // de tempos em tempos relê todos (o que os outros salvam não chega para quem só olha)
+  let aprTimer = null;
+  function aprTick() {
+    aprTimer = null;
+    if (!APR.on) return;
+    aprTimer = setTimeout(aprTick, 15000);
+    if (APR.lendo || APR.fila.length || S.room.id == null) return;
+    const ids = aprWiredIds();
+    const intervalo = Math.max(60000, ids.length * 1200);
+    if (Date.now() - APR.volta < intervalo) return;
+    APR.volta = Date.now();
+    aprPoe(ids);
+  }
+  function aprToggle() {
+    if (S.room.id == null) { toast('Entre no quarto primeiro', true); return; }
+    APR.on = !APR.on;
+    if (APR.on) {
+      if (APR.room !== S.room.id) aprReset();
+      APR.volta = Date.now();
+      if (!aprTimer) aprTimer = setTimeout(aprTick, 15000);
+      aprPoe(aprWiredIds());
+      toast('Aprendendo junto: leio os wired deste quarto e cada um que mudar');
+    } else toast('Parei de aprender (o que aprendi fica guardado)');
+    renderApr();
+  }
+  function aprPilhas() {
+    const piles = new Map();
+    for (const [id, def] of APR.defs) {
+      const it = S.floor.get(id) || APR.pos.get(id);
+      if (!it) continue;
+      const k = it.x + ',' + it.y;
+      if (!piles.has(k)) piles.set(k, []);
+      piles.get(k).push({ it, def, z: it.z || 0 });
+    }
+    for (const l of piles.values()) l.sort((a, b) => a.z - b.z);
+    return [...piles.entries()].sort((a, b) => { const [ax, ay] = a[0].split(',').map(Number), [bx, by] = b[0].split(',').map(Number); return ay - by || ax - bx; });
+  }
+  const aprTexto = () => aprPilhas().map(([k, l]) => `Pilha ${k}\n` + l.map(({ it, def }) => '  - ' + wiredLine(it, def).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")).join('\n')).join('\n\n');
+  function aprGuardar() {
+    const keys = aprPilhas().map(([k]) => k).filter((k) => wiredPiles().has(k));
+    if (!keys.length) { toast('Ainda não aprendi nenhuma pilha deste quarto', true); return; }
+    const info = roomInfoNow();
+    const nome = W.prompt ? W.prompt('Nome para guardar em ⭐ PERSONALIZADOS:', `aprendido ${info ? info.name : 'quarto ' + S.room.id}`) : null;
+    if (nome == null) return;
+    const cp = wcopyFromSelection(keys, nome, { so: true });
+    toast(`Guardado em ⭐ PERSONALIZADOS: “${cp.name}” (${cp.pilhas} pilhas, ${cp.items.length} mobis)`);
+  }
+  function renderApr() {
+    if (!ui) return;
+    const $ = (s) => ui.root.querySelector(s);
+    const btn = $('[data-a="aprToggle"]');
+    if (btn) { btn.textContent = APR.on ? '⏸ parar de aprender' : '👀 aprender junto'; btn.classList.toggle('learning', APR.on); }
+    const nP = aprPilhas().length;
+    $('.aprst').textContent = (APR.room != null && APR.room === S.room.id ? `${APR.defs.size} wired em ${nP} pilha(s) · ${APR.lidos} leituras` : 'nada aprendido neste quarto ainda') +
+      (APR.on ? (APR.fila.length ? ` · lendo… faltam ${APR.fila.length}` : ' · olhando') : '') + (APR.msg ? ' · ' + APR.msg : '');
+    const hora = (t) => new Date(t).toLocaleTimeString().slice(0, 5);
+    const cor = { novo: 'ok', mudou: 'warn', saiu: 'bad', 'mudou de lugar': 'dim' };
+    $('.apreventos').innerHTML = APR.eventos.length ? '<ol style="list-style:none;margin:0;padding:0">' + APR.eventos.slice(0, 60).map((e) =>
+      `<li style="margin:3px 0"><span class="dim">${hora(e.t)} · (${e.it.x},${e.it.y})</span> <span class="${cor[e.tipo] || ''}">${e.tipo}</span> ` +
+      wiredLine(e.it, e.def).replace(/^<li>|<\/li>$/g, '') + '</li>').join('') + '</ol>'
+      : '<span class="dim">Ligue “aprender junto” e fique no quarto enquanto alguém monta: cada wired novo ou mudado aparece aqui.</span>';
+    $('.aprpilhas').innerHTML = aprPilhas().map(([k, l]) => `<div class="wgc"><b>Pilha ${esc(k)}</b><ol>${l.map(({ it, def }) => wiredLine(it, def)).join('')}</ol></div>`).join('') ||
+      '<span class="dim">nenhuma pilha ainda</span>';
+  }
+
   function wiredLine(it, def) {
     const cls = classnameOf('floor', it.spriteId);
     const p = [];
@@ -8705,7 +8870,7 @@
     for (const sel of ['.panel > .status', '.panel > .exp', '.panel > .row2']) ui.root.querySelector(sel).hidden = !logged;
     ui.root.querySelector('.login').hidden = logged;
     if (!logged) {
-      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview']) ui.root.querySelector(sel).hidden = true;
+      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview', '.aprview']) ui.root.querySelector(sel).hidden = true;
       renderLogin();
       return;
     }
@@ -8716,9 +8881,11 @@
     const isCd = ui.tab === 'claude';
     const isBuild = ui.tab === 'build';
     const isWm = ui.tab === 'wired' && !!ui.wsub && ui.wsub !== 'guia';
-    ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || ui.tab === 'map' || ui.tab === 'obras';
-    ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm;
+    const isApr = ui.tab === 'aprender';
+    ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || ui.tab === 'map' || ui.tab === 'obras';
+    ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr;
     ui.root.querySelector('.wmview').hidden = !isWm;
+    ui.root.querySelector('.aprview').hidden = !isApr;
     ui.root.querySelector('.buildview').hidden = !isBuild;
     ui.root.querySelector('.cdview').hidden = !isCd;
     ui.root.querySelector('.paste').hidden = !isPaste;
@@ -8726,7 +8893,9 @@
     ui.root.querySelector('.ceoview').hidden = !isCeo;
 
     renderPrompt();
-    if (isWm) {
+    if (isApr) {
+      renderApr();
+    } else if (isWm) {
       renderWm();
     } else if (isCeo) {
       renderCeo();
