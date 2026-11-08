@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.12
+// @version      3.0.13
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.12';
+  const VERSION = '3.0.13';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -4996,6 +4996,39 @@
       .int(0).str('').int(-1).int(0).int(S.me ? S.me.id || 0 : 0).str(S.me ? S.me.name || '' : '')));
   }
   function lajPreviewClear() { for (const k of [...S.lajPrev.keys()]) lajPreview(k, false); }
+
+  // ---- Amigos do app em verde: na barra de amigos de baixo e na lista do console, o nome dos nicks marcados (por
+  // padrão os liberados do app) aparece na fonte verde das mensagens. Só na sua tela; nada vai para o hotel.
+  const MARCA_KEY = 'copiadorDeQuarto.marcados.v1';
+  const MARCA = { on: true, nicks: ['cobra', 'martinha'], ...(store.get(MARCA_KEY) || {}) };
+  const nickDe = (s) => String(s || '').replace(/^@/, '').trim().toLowerCase();
+  // o nome na barra de baixo (.friend-name) e, no console, o texto da linha que não é a cabeça nem um ícone
+  function nomesDeAmigos() {
+    const out = [...document.querySelectorAll('.friend-bar-item .friend-name')];
+    for (const row of document.querySelectorAll('.friend-row')) {
+      if (!row.querySelector('.friend-head')) continue; // cabeçalho de categoria
+      const el = [...row.querySelectorAll('div')].find((d) => !d.children.length && d.textContent.trim() && !d.closest('.friend-head'));
+      if (el) out.push(el);
+    }
+    return out;
+  }
+  const AMIGO_CSS = { color: '#b9ffd6', fontFamily: '"JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace', fontWeight: '600',
+    letterSpacing: '.3px', textShadow: '0 0 2px #000, 0 0 3px #000, 0 0 6px rgba(75,224,143,.75)' };
+  function pintaAmigos() {
+    if (typeof document === 'undefined' || S.bloqueado) return;
+    for (const el of nomesDeAmigos()) {
+      const verde = MARCA.on && MARCA.nicks.includes(nickDe(el.textContent));
+      if (verde && el.dataset.cobraVerde !== '1') { Object.assign(el.style, AMIGO_CSS); el.dataset.cobraVerde = '1'; }
+      else if (!verde && el.dataset.cobraVerde === '1') { for (const k of Object.keys(AMIGO_CSS)) el.style[k] = ''; delete el.dataset.cobraVerde; }
+    }
+  }
+  let amigosT = null;
+  function vigiaAmigos() {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined' || !document.body) return;
+    new MutationObserver(() => { if (!amigosT) amigosT = setTimeout(() => { amigosT = null; pintaAmigos(); }, 250); })
+      .observe(document.body, { childList: true, subtree: true, characterData: true });
+    pintaAmigos();
+  }
   // Um clique no chão do jogo com o modo ligado: marca ou desmarca o quadrado.
   function lajTile(x, y) {
     const k = x + ',' + y;
@@ -6181,6 +6214,7 @@
 
     makeDraggable(ui.panel, $('header'));
     setTimeout(showWelcome, 0); // se o nick já chegou antes do painel
+    vigiaAmigos();
     if (S.log.length) $('.log').textContent = S.log.join('\n');
     syncHeightInputs();
     render();
