@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.25
+// @version      3.0.26
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.25';
+  const VERSION = '3.0.26';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -805,6 +805,7 @@
 
   // Boas-vindas em cima do chat, só na tela de quem usa o plugin (não vai para o chat do quarto).
   const WELCOME = 'Bem-Vindo ao SCRIPT do Cobra - DC vinipetter';
+  const WELCOME_VIP = 'Versão VIP contatar DISCORD: vinipetter'; // logo depois das boas-vindas, para quem não tem tudo
   let welcomed = false;
   function showWelcome() {
     if (welcomed || !S.liberado || S.bloqueado || !ui || !ui.root || typeof document === 'undefined' || !S.me || !S.me.name) return;
@@ -816,12 +817,25 @@
     cur.className = 'cur';
     cur.textContent = '▌';
     el.append(txt, cur);
+    const vip = S.nivel !== 'total' ? WELCOME_VIP : '';
+    const l2 = document.createElement('span');
+    l2.className = 'vip';
+    const txt2 = document.createTextNode('');
+    if (vip) el.classList.add('dois');
     ui.root.appendChild(el);
     setTimeout(() => el.classList.add('show'), 30);
     let i = 0;
-    const tick = setInterval(() => { txt.data = WELCOME.slice(0, ++i); if (i >= WELCOME.length) clearInterval(tick); }, 45);
-    setTimeout(() => el.classList.remove('show'), 9000);
-    setTimeout(() => { clearInterval(tick); el.remove(); }, 9800);
+    const tick = setInterval(() => {
+      i++;
+      if (i <= WELCOME.length) { txt.data = WELCOME.slice(0, i); if (i === WELCOME.length && !vip) clearInterval(tick); return; }
+      if (!l2.isConnected) { el.append(l2); l2.append(txt2, cur); } // segunda linha: versão VIP
+      const j = i - WELCOME.length;
+      txt2.data = vip.slice(0, j);
+      if (j >= vip.length) clearInterval(tick);
+    }, 45);
+    const dura = vip ? 11500 : 9000;
+    setTimeout(() => el.classList.remove('show'), dura);
+    setTimeout(() => { clearInterval(tick); el.remove(); }, dura + 800);
   }
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
@@ -5804,6 +5818,8 @@
     }
     .welcome.show { opacity: 1; transform: translate(-50%, 0); }
     .welcome .cur { animation: blink 1s steps(1) infinite; color: var(--hi); }
+    .welcome.dois { border-radius: 14px; }
+    .welcome .vip { display: block; margin-top: 4px; font-size: 12px; color: #c8ffd9; }
     @keyframes welcomeGlow {
       0%, 100% { text-shadow: 0 0 3px rgba(75, 224, 143, .35); box-shadow: 0 0 8px rgba(75, 224, 143, .10); }
       50% { text-shadow: 0 0 7px rgba(75, 224, 143, .6); box-shadow: 0 0 14px rgba(75, 224, 143, .22); }
