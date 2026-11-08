@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.13
+// @version      3.0.14
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.13';
+  const VERSION = '3.0.14';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -5383,6 +5383,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
+        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), get state() { return CN; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -5671,8 +5672,8 @@
     .lvbox button.primary:not(:disabled):hover { background: #6ff0a8; color: #06140c; }
     button.danger, .actions button.danger, .opts button.danger { color: var(--bad); border-color: rgba(255, 122, 122, .35); }
     .row2 { padding: 8px 14px 10px; gap: 8px; }
-    .tabs { gap: 4px; }
-    .tabs button { padding: 5px 11px; border: 1px solid transparent; border-radius: 999px; color: var(--dim); }
+    .tabs { gap: 2px; }
+    .tabs button { padding: 5px 8px; border: 1px solid transparent; border-radius: 999px; color: var(--dim); }
     .tabs button:hover { background: var(--bg2); color: var(--fg); }
     .tabs button[aria-selected="true"] { background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .45); color: #fff; text-shadow: none; }
     .tabs button[aria-selected="true"]::before { content: none; }
@@ -5715,6 +5716,15 @@
       background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .5); color: #fff; text-decoration: none;
     }
     .wg h4, .wmview h4 { font-size: 13px; }
+    .cnview { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
+    .cnview > * { flex-shrink: 0; }
+    .cnview[hidden] { display: none !important; }
+    .cncard { margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+    .cnrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 4px; }
+    .cnrow button { padding: 5px 11px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); min-width: 34px; }
+    .cnrow button:hover { background: rgba(75, 224, 143, .14); border-color: rgba(75, 224, 143, .5); color: #fff; }
+    .cnrow input[type="number"] { width: 90px; text-align: center; font: 600 15px "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+      color: #9cf5c2; text-shadow: 0 0 3px rgba(75, 224, 143, .45); }
     .aprview { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
     .aprview > * { flex-shrink: 0; }
     .aprview[hidden] { display: none !important; }
@@ -5807,9 +5817,10 @@
             <button data-t="paste" class="tab-paste" title="Colar no meu quarto">🏠 Colar</button>
             <button data-t="wired">⚡ Wired</button>
             <button data-t="aprender" title="Aprender wired junto">🎓 Aprender</button>
+            <button data-t="construtor" title="Ferramenta para construtores">🧰 Construtor</button>
             <button data-t="build">🧱 Construções</button>
-            <button data-t="level">🟫 Piso</button>
             <button class="more" type="button">mais ▸</button>
+            <button data-t="level" class="t2">🟫 Piso</button>
             <button data-t="cat" class="t2">🛒 Catálogo</button>
             <button data-t="shop" class="t2">🧾 Compras</button>
             <button data-t="wall" class="t2">🖼 Parede</button>
@@ -5883,6 +5894,31 @@
             <div class="lvpad dim">Entre no seu quarto, clique em “colar” e depois no quadrado do canto de cima. Eu coloco os mobis e os wired
               (comprando o que faltar) e programo cada wired com a configuração lida, trocando os mobis e as variáveis pelos novos.</div>
             <details class="lvpad"><summary>todas as pilhas lidas</summary><div class="wmreadout"></div></details>
+          </div>
+        </div>
+        <div class="cnview" hidden>
+          <div class="lvpad"><b>🧰 Ferramenta para construtores</b> <span class="dim">Mude o número e eu mando o comando no jogo por você:
+            nada de digitar. Use ▲ ▼, digite o número ou as setinhas do teclado.</span></div>
+          <div class="cncard">
+            <div class="verdinho"><b>⬆ Altura</b> <span class="dim">(:up · de −25 a 63)</span></div>
+            <div class="cnrow"><button data-a="cnUpMenos" title="diminuir">▼</button>
+              <input type="number" data-o="cnUp" value="0" step="0.5" min="-25" max="63">
+              <button data-a="cnUpMais" title="aumentar">▲</button>
+              <label class="dim">passo <select data-o="cnUpPasso"><option>0.01</option><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select></label>
+              <button data-a="cnUpDesliga">desligar</button></div>
+            <div class="cnupst dim"></div>
+          </div>
+          <div class="cncard">
+            <div class="verdinho"><b>🔁 Estado do mobi</b> <span class="dim">(:state)</span></div>
+            <div class="cnrow"><button data-a="cnStMenos" title="diminuir">▼</button>
+              <input type="number" data-o="cnSt" value="0" step="1" min="0" max="99">
+              <button data-a="cnStMais" title="aumentar">▲</button>
+              <button data-a="cnStDesliga">desligar</button></div>
+            <div class="cnstst dim"></div>
+          </div>
+          <div class="cncard">
+            <div class="verdinho"><b>⚡ Atalhos</b></div>
+            <div class="cnrow"><button data-a="cnHideWired">mostrar / esconder os wired (:hidewired)</button></div>
           </div>
         </div>
         <div class="aprview" hidden>
@@ -6032,6 +6068,12 @@
 
     $('.filter').addEventListener('input', (e) => { ui.filter = e.target.value.trim().toLowerCase(); render(); });
     $('[data-o="wmAsk"]').addEventListener('input', (e) => { ui.wmAsk = e.target.value; renderWm(); });
+    for (const [sel, tipo] of [['[data-o="cnUp"]', 'up'], ['[data-o="cnSt"]', 'st']]) {
+      const inp = $(sel);
+      inp.addEventListener('input', () => cnDigitou(tipo, inp.value, false));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); cnDigitou(tipo, inp.value, true); } });
+    }
+    $('[data-o="cnUpPasso"]').addEventListener('change', (e) => { CN.upPasso = Number(e.target.value) || 0.5; $('[data-o="cnUp"]').step = String(CN.upPasso); });
     $('.wmcanvas').addEventListener('click', (e) => {
       const cv = e.currentTarget, cell = cv.__cell || 8, r = cv.getBoundingClientRect();
       const x = Math.floor((e.clientX - r.left) * (cv.width / r.width) / cell), y = Math.floor((e.clientY - r.top) * (cv.height / r.height) / cell);
@@ -6434,6 +6476,11 @@
     if (a === 'wmUndo') { if (WM.step === 'role') { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l && l.length) l.pop(); render(); } return; }
     if (a === 'wmRepick') { wmRepick(+el.dataset.id); return; }
     if (a === 'wmCancel') { wmReset('Montagem cancelada'); return; }
+    if (a === 'cnUpMais' || a === 'cnUpMenos') { CN.upPasso = Number(ui.root.querySelector('[data-o="cnUpPasso"]').value) || 0.5; cnMuda('up', a === 'cnUpMais' ? CN.upPasso : -CN.upPasso); return; }
+    if (a === 'cnStMais' || a === 'cnStMenos') { cnMuda('st', a === 'cnStMais' ? 1 : -1); return; }
+    if (a === 'cnUpDesliga') { cnDesliga('up'); return; }
+    if (a === 'cnStDesliga') { cnDesliga('st'); return; }
+    if (a === 'cnHideWired') { if (!connected()) { toast('Sem conexão com o jogo', true); return; } send(OUT.CHAT, (w) => w.str(':hidewired').int(0)); lastCommandAt = Date.now(); toast('Mandei :hidewired'); return; }
     if (a === 'aprToggle') { aprToggle(); return; }
     if (a === 'aprAgora') { if (!APR.on) aprToggle(); else { APR.volta = Date.now(); aprPoe(aprWiredIds()); renderApr(); } return; }
     if (a === 'aprGuardar') { try { aprGuardar(); } catch (e) { toast('Erro: ' + e.message, true); } return; }
@@ -7984,6 +8031,58 @@
     WREAD.run = false;
     renderWm();
   }
+  // ---- Ferramenta para construtores: :up e :state sem digitar. Cada mudança no número manda um comando só
+  // (espera meio segundo depois da última mudança e respeita a pausa entre comandos, por causa do anti-flood).
+  const CN = { up: 0, upPasso: 0.5, st: 0, timer: {}, enviado: {} };
+  const cnFmt = (v) => String(Math.round(v * 100) / 100);
+  const cnLimite = (tipo, v) => (tipo === 'up' ? Math.max(UP_MIN, Math.min(UP_MAX, v)) : Math.max(0, Math.min(99, Math.round(v))));
+  function cnManda(tipo) {
+    clearTimeout(CN.timer[tipo]);
+    if (!connected()) { toast('Sem conexão com o jogo', true); return; }
+    const espera = Math.max(lastCommandAt + 900, S.mutedUntil || 0) - Date.now();
+    if (espera > 0) { CN.timer[tipo] = setTimeout(() => cnManda(tipo), espera + 50); return; }
+    const cmd = tipo === 'up' ? `:up ${cnFmt(CN.up)}` : `:state ${cnFmt(CN.st)}`;
+    send(OUT.CHAT, (w) => w.str(cmd).int(0));
+    lastCommandAt = Date.now();
+    CN.enviado[tipo] = cmd;
+    renderCn();
+  }
+  function cnAgenda(tipo, ms = 500) { clearTimeout(CN.timer[tipo]); CN.timer[tipo] = setTimeout(() => cnManda(tipo), ms); }
+  function cnMuda(tipo, delta) {
+    const k = tipo === 'up' ? 'up' : 'st';
+    CN[k] = cnLimite(tipo, Math.round((CN[k] + delta) * 100) / 100);
+    const inp = ui && ui.root.querySelector(tipo === 'up' ? '[data-o="cnUp"]' : '[data-o="cnSt"]');
+    if (inp) inp.value = cnFmt(CN[k]);
+    cnAgenda(tipo);
+  }
+  function cnDigitou(tipo, texto, agora) {
+    const v = parseFloat(String(texto).replace(',', '.'));
+    if (!Number.isFinite(v)) return;
+    CN[tipo === 'up' ? 'up' : 'st'] = cnLimite(tipo, v);
+    if (agora) cnManda(tipo); else cnAgenda(tipo, 700);
+  }
+  function cnDesliga(tipo) {
+    clearTimeout(CN.timer[tipo]);
+    if (!connected()) { toast('Sem conexão com o jogo', true); return; }
+    if (tipo === 'up') {
+      if (upKnown() && S.up.mode === 'off') { toast('O :up já está desligado'); return; }
+      S.up.wantOff = Date.now(); // se o hotel ligar o modo de teste, desligo de novo
+    }
+    send(OUT.CHAT, (w) => w.str(tipo === 'up' ? ':up' : ':state').int(0));
+    lastCommandAt = Date.now();
+    CN.enviado[tipo] = tipo === 'up' ? ':up (desligar)' : ':state (desligar)';
+    renderCn();
+  }
+  function renderCn() {
+    if (!ui || ui.tab !== 'construtor') return;
+    const $ = (q) => ui.root.querySelector(q);
+    const u = S.up;
+    $('.cnupst').innerHTML = (upKnown() ? 'No jogo agora: ' + (u.mode === 'on' ? `<span class="ok">:up ${esc(u.z)} ligado</span>`
+      : u.mode === 'test' ? '<span class="warn">modo de teste do :up</span>' : ':up desligado') : 'O hotel ainda não disse se o :up está ligado') +
+      (CN.enviado.up ? ` · último enviado: <b>${esc(CN.enviado.up)}</b>` : '');
+    $('.cnstst').innerHTML = CN.enviado.st ? `Último enviado: <b>${esc(CN.enviado.st)}</b>` : 'Escolha o estado: eu mando o :state por você.';
+  }
+
   // ---- Aprender wired: aprende junto enquanto alguém monta os wired do quarto
   //
   // Ligado, cada wired que aparece, muda de lugar ou que você salva entra na fila e é lido de novo (como o clique duplo
@@ -8929,7 +9028,7 @@
     for (const sel of ['.panel > .status', '.panel > .exp', '.panel > .row2']) ui.root.querySelector(sel).hidden = !logged;
     ui.root.querySelector('.login').hidden = logged;
     if (!logged) {
-      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview', '.aprview']) ui.root.querySelector(sel).hidden = true;
+      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview', '.aprview', '.cnview']) ui.root.querySelector(sel).hidden = true;
       renderLogin();
       return;
     }
@@ -8941,10 +9040,12 @@
     const isBuild = ui.tab === 'build';
     const isWm = ui.tab === 'wired' && !!ui.wsub && ui.wsub !== 'guia';
     const isApr = ui.tab === 'aprender';
-    ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || ui.tab === 'map' || ui.tab === 'obras';
-    ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr;
+    const isCn = ui.tab === 'construtor';
+    ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn || ui.tab === 'map' || ui.tab === 'obras';
+    ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn;
     ui.root.querySelector('.wmview').hidden = !isWm;
     ui.root.querySelector('.aprview').hidden = !isApr;
+    ui.root.querySelector('.cnview').hidden = !isCn;
     ui.root.querySelector('.buildview').hidden = !isBuild;
     ui.root.querySelector('.cdview').hidden = !isCd;
     ui.root.querySelector('.paste').hidden = !isPaste;
@@ -8952,7 +9053,9 @@
     ui.root.querySelector('.ceoview').hidden = !isCeo;
 
     renderPrompt();
-    if (isApr) {
+    if (isCn) {
+      renderCn();
+    } else if (isApr) {
       renderApr();
     } else if (isWm) {
       renderWm();
