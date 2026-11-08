@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.15
+// @version      3.0.18
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.15';
+  const VERSION = '3.0.18';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -795,7 +795,7 @@
 
   function setMe(id, name) {
     // mesma conta da última vez (o nick veio guardado): confere a trava e as boas-vindas do mesmo jeito
-    if (S.me && S.me.id === id && (S.me.name || !name)) { checkTrava(); showWelcome(); return; }
+    if (S.me && S.me.id === id && (!name || S.me.name === name)) { checkTrava(); showWelcome(); return; }
     S.me = { id, name: name || (S.me && S.me.id === id ? S.me.name : '') || '' };
     store.set(ME_KEY, S.me);
     restoreLogin();
@@ -826,14 +826,21 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha", "criminoso"], "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha"], "wired": ["criminoso"], "msgs": {"construtora": "NAO MEXA C O COBRA"}, "padrao": "Você não tem acesso a essa aplicação. DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
+  S.nivel = 'total';        // 'total' = tudo; 'wired' = só ler, copiar e colar wired (sem copiar quarto)
   function checkTrava() {
     if (!TRAVA || !S.me || !S.me.name) return;
     const nick = String(S.me.name).replace(/^@/, '').trim().toLowerCase();
     const host = typeof document !== 'undefined' && document.getElementById('copiador-de-quarto');
-    if (TRAVA.nicks.includes(nick)) { S.bloqueado = false; S.liberado = true; if (host) host.style.display = ''; return; }
+    const soWired = (TRAVA.wired || []).includes(nick);
+    if (TRAVA.nicks.includes(nick) || soWired) {
+      S.bloqueado = false; S.liberado = true; S.nivel = soWired ? 'wired' : 'total';
+      if (host) host.style.display = '';
+      if (typeof scheduleRender === 'function') scheduleRender();
+      return;
+    }
     S.bloqueado = true;
     if (host) host.remove();
     if (typeof document === 'undefined' || !document.body || document.getElementById('copiador-aviso')) return;
@@ -1146,7 +1153,7 @@
     const nativeSend = ws.send;
     ws.send = function (data) {
       if (S.rec) { try { recordOut(data); } catch (_) { /* ignorado */ } }
-      if (!S.bloqueado) { try { aprOut(data); } catch (_) { /* ignorado */ } }
+      if (!S.bloqueado) { try { aprOut(data); } catch (_) { /* ignorado */ } try { if (!ownSend) cncOut(data); } catch (_) { /* ignorado */ } }
       if (!ownSend && !S.bloqueado) {
         let walk = null, chat = null;
         try { walk = walkOf(data); chat = walk ? null : chatOf(data); } catch (_) { /* ignorado */ }
@@ -1786,6 +1793,7 @@
   };
 
   const saveCurrentRoom = () => {
+    if (S.nivel === 'wired') throw new Error('sua conta tem acesso só aos wired');
     if (roomProtected()) throw new Error('quarto autoral: o dono protegeu contra cópia');
     if (!S.floor.size && !S.wall.size) throw new Error('nenhum mobi capturado neste quarto');
     return setCopy(normalizeCopy(snapshotWithFloorCode()));
@@ -5417,7 +5425,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
-        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), get state() { return CN; } },
+        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -5750,11 +5758,15 @@
       background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .5); color: #fff; text-decoration: none;
     }
     .wg h4, .wmview h4 { font-size: 13px; }
+    /* conta só de wired: só as abas Wired e Aprender */
+    .panel.so-wired .tabs button:not([data-t="wired"]):not([data-t="aprender"]), .panel.so-wired .tabs .more,
+    .panel.so-wired details.exp { display: none !important; }
     .cnview { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
     .cnview > * { flex-shrink: 0; }
     .cnview[hidden] { display: none !important; }
     .cncard { margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
     .cnrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 4px; }
+    .cnview.desligado .cncard:not(.cnmodo) { opacity: .45; }
     .cnrow button { padding: 5px 11px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); min-width: 34px; }
     .cnrow button:hover { background: rgba(75, 224, 143, .14); border-color: rgba(75, 224, 143, .5); color: #fff; }
     .cnrow input[type="number"] { width: 90px; text-align: center; font: 600 15px "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -5933,6 +5945,12 @@
         <div class="cnview" hidden>
           <div class="lvpad"><b>🧰 Ferramenta para construtores</b> <span class="dim">Mude o número e eu mando o comando no jogo por você:
             nada de digitar. Use ▲ ▼, digite o número ou as setinhas do teclado.</span></div>
+          <div class="cncard cnmodo">
+            <label class="chk verdinho"><input type="checkbox" data-o="cnModo"> <b>Modo construtor ligado</b></label>
+            <div class="dim" style="padding-top:4px">Ligado: as ferramentas abaixo funcionam e, quando o mobi que você está colocando acabar,
+              o próximo clique no jogo compra mais 1 dele. Desligado: desligo o :up, o :state e o :spin no jogo e não compro nada.</div>
+            <div class="cncompra dim" style="padding-top:4px"></div>
+          </div>
           <div class="cncard">
             <div class="verdinho"><b>⬆ Altura</b> <span class="dim">(:up · de −25 a 63)</span></div>
             <div class="cnrow"><button data-a="cnUpMenos" title="diminuir">▼</button>
@@ -5949,6 +5967,14 @@
               <button data-a="cnStMais" title="aumentar">▲</button>
               <button data-a="cnStDesliga">desligar</button></div>
             <div class="cnstst dim"></div>
+          </div>
+          <div class="cncard">
+            <div class="verdinho"><b>🔄 Girar o mobi</b> <span class="dim">(:spin · <span class="cnspmax">0, 2, 4 ou 6</span>)</span></div>
+            <div class="cnrow"><button data-a="cnSpMenos" title="diminuir">▼</button>
+              <input type="number" data-o="cnSp" value="0" step="2" min="0" max="6">
+              <button data-a="cnSpMais" title="aumentar">▲</button>
+              <button data-a="cnSpDesliga">desligar</button></div>
+            <div class="cnspst dim"></div>
           </div>
           <div class="cncard">
             <div class="verdinho"><b>⚡ Atalhos</b></div>
@@ -6102,12 +6128,13 @@
 
     $('.filter').addEventListener('input', (e) => { ui.filter = e.target.value.trim().toLowerCase(); render(); });
     $('[data-o="wmAsk"]').addEventListener('input', (e) => { ui.wmAsk = e.target.value; renderWm(); });
-    for (const [sel, tipo] of [['[data-o="cnUp"]', 'up'], ['[data-o="cnSt"]', 'st']]) {
+    for (const [sel, tipo] of [['[data-o="cnUp"]', 'up'], ['[data-o="cnSt"]', 'st'], ['[data-o="cnSp"]', 'sp']]) {
       const inp = $(sel);
       inp.addEventListener('input', () => cnDigitou(tipo, inp.value, false));
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); cnDigitou(tipo, inp.value, true); } });
     }
     $('[data-o="cnUpPasso"]').addEventListener('change', (e) => { CN.upPasso = Number(e.target.value) || 0.5; $('[data-o="cnUp"]').step = String(CN.upPasso); });
+    $('[data-o="cnModo"]').addEventListener('change', (e) => cnModo(e.target.checked));
     $('.wmcanvas').addEventListener('click', (e) => {
       const cv = e.currentTarget, cell = cv.__cell || 8, r = cv.getBoundingClientRect();
       const x = Math.floor((e.clientX - r.left) * (cv.width / r.width) / cell), y = Math.floor((e.clientY - r.top) * (cv.height / r.height) / cell);
@@ -6404,7 +6431,10 @@
     }
   }
 
+  // Conta só de wired: ler, copiar e colar wired (wm…), aprender (apr…) e as categorias do guia.
+  const SO_WIRED_OK = (a) => /^(wm|apr)/.test(a) || ['wcat', 'close', 'stop', 'diag'].includes(a);
   async function action(a, el) {
+    if (S.nivel === 'wired' && !SO_WIRED_OK(a)) { toast('Sua conta tem acesso só aos wired (ler, copiar e colar).', true); return; }
     const $ = (sel) => ui.root.querySelector(sel);
     const fail = (e) => { S.authMsg = `<span class="bad">✗ ${esc(e.message)}</span>`; };
     if (a === 'loginUser') {
@@ -6513,6 +6543,8 @@
     if (a === 'cnUpMais' || a === 'cnUpMenos') { CN.upPasso = Number(ui.root.querySelector('[data-o="cnUpPasso"]').value) || 0.5; cnMuda('up', a === 'cnUpMais' ? CN.upPasso : -CN.upPasso); return; }
     if (a === 'cnStMais' || a === 'cnStMenos') { cnMuda('st', a === 'cnStMais' ? 1 : -1); return; }
     if (a === 'cnUpDesliga') { cnDesliga('up'); return; }
+    if (a === 'cnSpMais' || a === 'cnSpMenos') { cnMuda('sp', a === 'cnSpMais' ? 2 : -2); return; }
+    if (a === 'cnSpDesliga') { cnDesliga('sp'); return; }
     if (a === 'cnStDesliga') { cnDesliga('st'); return; }
     if (a === 'cnHideWired') { if (!connected()) { toast('Sem conexão com o jogo', true); return; } send(OUT.CHAT, (w) => w.str(':hidewired').int(0)); lastCommandAt = Date.now(); toast('Mandei :hidewired'); return; }
     if (a === 'aprToggle') { aprToggle(); return; }
@@ -8067,54 +8099,159 @@
   }
   // ---- Ferramenta para construtores: :up e :state sem digitar. Cada mudança no número manda um comando só
   // (espera meio segundo depois da última mudança e respeita a pausa entre comandos, por causa do anti-flood).
-  const CN = { up: 0, upPasso: 0.5, st: 0, timer: {}, enviado: {} };
+  // :spin do Habblet (ensinado por ela): 0 = posição normal, 2 = próximo giro, 4 = próximo, 6 = último giro
+  const SPIN_MAX = 6;
+  const SPIN_NOME = { 0: 'posição normal', 2: '1º giro', 4: '2º giro', 6: 'último giro' };
+  const CN = { up: 0, upPasso: 0.5, st: 0, sp: 0, timer: {}, enviado: {}, ligado: {}, modo: false };
+  // Compra automática do modo construtor: o mobi que você está colocando acabou no inventário → o próximo clique
+  // no jogo compra mais 1 dele (um de cada vez, só quando precisa).
+  const CNC = { inv: new Map(), conta: new Map(), carregado: false, carregando: null, pendente: null, comprando: false, comprados: 0, gasto: 0, frags: new Map() };
+  function cncGuarda(items) {
+    CNC.inv.clear(); CNC.conta.clear();
+    for (const it of items) {
+      if (it.type !== 'S' || it.expires > -1) continue;
+      CNC.inv.set(it.id, it.spriteId);
+      if (it.ref != null && it.ref !== it.id) CNC.inv.set(it.ref, it.spriteId);
+      CNC.conta.set(it.spriteId, (CNC.conta.get(it.spriteId) || 0) + 1);
+    }
+    CNC.carregado = true;
+  }
+  function cncCarrega(forca) {
+    if (CNC.carregando && !forca) return CNC.carregando;
+    if (!connected()) return Promise.resolve();
+    CNC.carregando = readInventory(8000).then(cncGuarda).catch(() => { /* fica com o que tinha */ }).finally(() => { CNC.carregando = null; });
+    return CNC.carregando;
+  }
+  // o inventário que o próprio jogo pede também atualiza a conta
+  listen((kind, d) => {
+    if (kind !== 'inventory' || !CN.modo) return;
+    CNC.frags.set(d.fragment, d.items);
+    if (CNC.frags.size >= d.total) { cncGuarda([].concat(...CNC.frags.values())); CNC.frags.clear(); }
+  });
+  const cncNome = (sp) => (S.furni.floor.get(sp) || {}).name || classnameOf('floor', sp) || 'mobi';
+  async function cncCompra(sp) {
+    if (CNC.comprando || !connected()) return;
+    CNC.comprando = true;
+    const key = itemKey('floor', sp);
+    try {
+      if (!S.catalog.offers[key]) { // como no "Comprar o que falta": direto pela página do mobi quando o catálogo guardado já é grande
+        const big = Object.keys(S.catalog.offers).length >= BIG_CATALOG;
+        await ensureOffers([key], makeCtx({ log: (m) => pasteLog(m), confirm: () => true }), big ? { direct: true } : {});
+      }
+      const o = S.catalog.offers[key];
+      if (!o) { toast(`Não achei ${cncNome(sp)} à venda no catálogo`, true); return; }
+      const p = waitFor(PURCHASE_KINDS, null, 8000);
+      send(OUT.PURCHASE, (w) => w.int(o.pageId).int(o.offerId).str('').int(1));
+      const r = await p;
+      if (r && r.kind === 'purchaseOk') {
+        CNC.comprados += o.count || 1;
+        CNC.gasto += o.credits || 0;
+        toast(`🛒 Comprei mais 1 ${cncNome(sp)}${o.credits ? ` (${o.credits} moeda${o.credits === 1 ? '' : 's'})` : ''}`);
+        await sleep(400);
+        await cncCarrega(true);
+      } else if (r && r.kind === 'notEnoughBalance') toast('Sem moedas para comprar mais', true);
+      else toast(r ? `O hotel não vendeu ${cncNome(sp)}` : 'O hotel não respondeu à compra', true);
+    } catch (e) { toast('Erro na compra: ' + e.message, true); } finally { CNC.comprando = false; renderCn(); }
+  }
+  // o que o jogo manda: colocar mobi (conta o inventário) e o clique depois que acabou (compra mais 1)
+  function cncOut(data) {
+    if (!CN.modo || S.nivel !== 'total' || S.room.id == null) return;
+    const tag = Object.prototype.toString.call(data);
+    const u8 = tag === '[object ArrayBuffer]' ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
+    if (!u8 || u8.length < 8) return;
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const h = dv.getInt16(4);
+    if (h === OUT.PLACE) {
+      const n = dv.getUint16(6);
+      const txt = new TextDecoder().decode(u8.subarray(8, 8 + n));
+      if (txt.includes(':w=')) return; // mobi de parede
+      const id = Number(txt.split(' ')[0]);
+      const sp = CNC.inv.get(id);
+      if (sp == null) { if (!CNC.carregado) cncCarrega(); return; }
+      CNC.inv.delete(id);
+      const c = Math.max(0, (CNC.conta.get(sp) || 1) - 1);
+      CNC.conta.set(sp, c);
+      if (c === 0) { CNC.pendente = sp; toast(`Acabou ${cncNome(sp)}: clique no jogo que eu compro mais 1`); }
+      return;
+    }
+    if (CNC.pendente != null && (h === OUT.WALK || h === OUT.LOOK || h === OUT.USE || h === 355)) {
+      const sp = CNC.pendente;
+      CNC.pendente = null;
+      cncCompra(sp);
+    }
+  }
+  function cnModo(on) {
+    CN.modo = !!on;
+    store.set('copiadorDeQuarto.modoConstrutor.v1', CN.modo);
+    if (CN.modo) { cncCarrega(true); toast('Modo construtor ligado'); }
+    else {
+      CNC.pendente = null;
+      for (const t of ['up', 'st', 'sp']) if (CN.ligado[t] || (t === 'up' && upKnown() && S.up.mode === 'on')) cnDesliga(t, true);
+      toast('Modo construtor desligado');
+    }
+    renderCn();
+  }
   const cnFmt = (v) => String(Math.round(v * 100) / 100);
-  const cnLimite = (tipo, v) => (tipo === 'up' ? Math.max(UP_MIN, Math.min(UP_MAX, v)) : Math.max(0, Math.min(99, Math.round(v))));
+  const cnLimite = (tipo, v) => (tipo === 'up' ? Math.max(UP_MIN, Math.min(UP_MAX, v))
+    : tipo === 'sp' ? Math.max(0, Math.min(SPIN_MAX, Math.round(v / 2) * 2)) : Math.max(0, Math.min(99, Math.round(v))));
+  const cnChave = (tipo) => (tipo === 'up' ? 'up' : tipo === 'sp' ? 'sp' : 'st');
+  const cnCmd = (tipo) => (tipo === 'up' ? ':up' : tipo === 'sp' ? ':spin' : ':state');
   function cnManda(tipo) {
     clearTimeout(CN.timer[tipo]);
+    if (!CN.modo) { toast('Ligue o modo construtor primeiro', true); return; }
     if (!connected()) { toast('Sem conexão com o jogo', true); return; }
     const espera = Math.max(lastCommandAt + 900, S.mutedUntil || 0) - Date.now();
     if (espera > 0) { CN.timer[tipo] = setTimeout(() => cnManda(tipo), espera + 50); return; }
-    const cmd = tipo === 'up' ? `:up ${cnFmt(CN.up)}` : `:state ${cnFmt(CN.st)}`;
+    const cmd = `${cnCmd(tipo)} ${cnFmt(CN[cnChave(tipo)])}`;
     send(OUT.CHAT, (w) => w.str(cmd).int(0));
     lastCommandAt = Date.now();
     CN.enviado[tipo] = cmd;
+    CN.ligado[tipo] = true;
+    if (!CNC.carregado) cncCarrega();
     renderCn();
   }
   function cnAgenda(tipo, ms = 500) { clearTimeout(CN.timer[tipo]); CN.timer[tipo] = setTimeout(() => cnManda(tipo), ms); }
   function cnMuda(tipo, delta) {
-    const k = tipo === 'up' ? 'up' : 'st';
+    const k = cnChave(tipo);
     CN[k] = cnLimite(tipo, Math.round((CN[k] + delta) * 100) / 100);
-    const inp = ui && ui.root.querySelector(tipo === 'up' ? '[data-o="cnUp"]' : '[data-o="cnSt"]');
+    const inp = ui && ui.root.querySelector({ up: '[data-o="cnUp"]', sp: '[data-o="cnSp"]', st: '[data-o="cnSt"]' }[k]);
     if (inp) inp.value = cnFmt(CN[k]);
     cnAgenda(tipo);
+    renderCn();
   }
   function cnDigitou(tipo, texto, agora) {
     const v = parseFloat(String(texto).replace(',', '.'));
     if (!Number.isFinite(v)) return;
-    CN[tipo === 'up' ? 'up' : 'st'] = cnLimite(tipo, v);
+    CN[cnChave(tipo)] = cnLimite(tipo, v);
     if (agora) cnManda(tipo); else cnAgenda(tipo, 700);
   }
-  function cnDesliga(tipo) {
+  function cnDesliga(tipo, quieto) {
     clearTimeout(CN.timer[tipo]);
-    if (!connected()) { toast('Sem conexão com o jogo', true); return; }
+    if (!connected()) { if (!quieto) toast('Sem conexão com o jogo', true); return; }
+    CN.ligado[tipo] = false;
     if (tipo === 'up') {
-      if (upKnown() && S.up.mode === 'off') { toast('O :up já está desligado'); return; }
+      if (upKnown() && S.up.mode === 'off') { if (!quieto) toast('O :up já está desligado'); return; }
       S.up.wantOff = Date.now(); // se o hotel ligar o modo de teste, desligo de novo
     }
-    send(OUT.CHAT, (w) => w.str(tipo === 'up' ? ':up' : ':state').int(0));
+    send(OUT.CHAT, (w) => w.str(cnCmd(tipo)).int(0));
     lastCommandAt = Date.now();
-    CN.enviado[tipo] = tipo === 'up' ? ':up (desligar)' : ':state (desligar)';
+    CN.enviado[tipo] = `${cnCmd(tipo)} (desligar)`;
     renderCn();
   }
   function renderCn() {
     if (!ui || ui.tab !== 'construtor') return;
     const $ = (q) => ui.root.querySelector(q);
+    $('[data-o="cnModo"]').checked = CN.modo;
+    $('.cnview').classList.toggle('desligado', !CN.modo);
+    $('.cncompra').innerHTML = !CN.modo ? '' : (CNC.pendente != null ? `<span class="warn">Acabou ${esc(cncNome(CNC.pendente))}: clique no jogo que eu compro mais 1.</span> ` : '') +
+      (CNC.comprados ? `🛒 comprei ${CNC.comprados} mobi(s) neste modo (${CNC.gasto} moedas).` : '🛒 compra automática pronta.');
     const u = S.up;
     $('.cnupst').innerHTML = (upKnown() ? 'No jogo agora: ' + (u.mode === 'on' ? `<span class="ok">:up ${esc(u.z)} ligado</span>`
       : u.mode === 'test' ? '<span class="warn">modo de teste do :up</span>' : ':up desligado') : 'O hotel ainda não disse se o :up está ligado') +
       (CN.enviado.up ? ` · último enviado: <b>${esc(CN.enviado.up)}</b>` : '');
     $('.cnstst').innerHTML = CN.enviado.st ? `Último enviado: <b>${esc(CN.enviado.st)}</b>` : 'Escolha o estado: eu mando o :state por você.';
+    $('.cnspst').innerHTML = `Direção ${CN.sp}: <b>${esc(SPIN_NOME[CN.sp] || '')}</b>` +
+      (CN.enviado.sp ? ` · último enviado: <b>${esc(CN.enviado.sp)}</b>` : ' · eu mando o :spin por você');
   }
 
   // ---- Aprender wired: aprende junto enquanto alguém monta os wired do quarto
@@ -9073,6 +9210,12 @@
     const isCd = ui.tab === 'claude';
     const isBuild = ui.tab === 'build';
     const isWm = ui.tab === 'wired' && !!ui.wsub && ui.wsub !== 'guia';
+    const soWired = S.nivel === 'wired';
+    ui.panel.classList.toggle('so-wired', soWired);
+    if (soWired && ui.tab !== 'wired' && ui.tab !== 'aprender') {
+      ui.tab = 'wired';
+      ui.root.querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.t === ui.tab)));
+    }
     const isApr = ui.tab === 'aprender';
     const isCn = ui.tab === 'construtor';
     ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn || ui.tab === 'map' || ui.tab === 'obras';
