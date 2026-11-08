@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.10
+// @version      3.0.11
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.10';
+  const VERSION = '3.0.11';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -794,7 +794,8 @@
   }
 
   function setMe(id, name) {
-    if (S.me && S.me.id === id && (S.me.name || !name)) return;
+    // mesma conta da última vez (o nick veio guardado): confere a trava e as boas-vindas do mesmo jeito
+    if (S.me && S.me.id === id && (S.me.name || !name)) { checkTrava(); showWelcome(); return; }
     S.me = { id, name: name || (S.me && S.me.id === id ? S.me.name : '') || '' };
     store.set(ME_KEY, S.me);
     restoreLogin();
@@ -1730,9 +1731,18 @@
     if (hasExactFloor()) return planRows(S.room.heightmap);
     return S.room.id != null ? planForImport(false).split('\n') : [];
   }
+  // O floor que vai na cópia (pedido dela): o código da aba Piso, com as alturas ensinadas e x no chão que não
+  // aparece (quarto montado com pisos de mobi). Sem a leitura do piso, vai o floor exato do hotel.
+  function pisoRows() {
+    try {
+      const rows = S.room.id != null ? planForImport().split('\n') : [];
+      if (rows.length && rows.some((r) => /[^x]/.test(r))) return rows;
+    } catch (_) { /* ainda sem a leitura do piso */ }
+    return exactFloorRows();
+  }
   function floorCodeForCopy() {
     try {
-      const rows = exactFloorRows();
+      const rows = pisoRows();
       return rows.length ? rows.join('\r') : S.room.heightmap;
     } catch (_) {
       return S.room.heightmap;
@@ -1741,14 +1751,16 @@
   const snapshotWithFloorCode = () => {
     const snap = snapshot();
     if (snap.protected) return snap;
-    const hm = floorCodeForCopy();
-    if (hm) snap.room.heightmap = hm;
-    snap.room.floorExact = hasExactFloor();
+    let rows = [];
+    try { rows = pisoRows(); } catch (_) { rows = []; }
+    if (rows.length) snap.room.heightmap = rows.join('\r');
+    snap.room.floorExact = rows.length > 0 || hasExactFloor(); // tem a planta para pôr na colagem
     if (!snap.room.door) snap.room.door = entryDoor();
-    // Mobis em quadrados sem piso: vai junto o código para montar (com piso embaixo deles).
+    // Mobis em quadrado que fica x (sem piso): vai junto o código para montar, com piso embaixo deles;
+    // a colagem põe esse primeiro, cola os mobis e depois põe o floor da cópia.
     try {
-      const b = S.room.id != null ? floorForBuild() : null;
-      snap.room.buildHeightmap = b && (b.tiles || b.raised) ? b.code.split('\n').join('\r') : null;
+      const b = rows.length ? buildCodeFor(rows, [...S.floor.values()]) : null;
+      snap.room.buildHeightmap = b && (b.tiles || b.raised) ? b.rows.join('\r') : null;
     } catch (_) { snap.room.buildHeightmap = null; }
     return snap;
   };
@@ -6576,7 +6588,7 @@
     }
     if (a === 'planExport') {
       try {
-        const txt = exactFloorRows().join('\n'); // o floor do quarto, igual ao editor de planta
+        const txt = pisoRows().join('\n'); // o mesmo floor que vai na cópia (alturas ensinadas, x no chão que não aparece)
         ui.root.querySelector('.lvexporttext').value = txt;
         toast((await copy(txt)) ? 'Planta copiada: cole no Importar do editor de planta' : 'Copie a planta do quadro abaixo');
       } catch (e) { toast('Erro: ' + e.message, true); }
@@ -8679,15 +8691,14 @@
     // código do floor, calculado na hora com as alturas de cada quadrado
     const ta = $('.lvexporttext');
     let code = '';
-    try { code = S.room.id != null && w && h ? exactFloorRows().join('\n') : ''; } catch (_) { code = ''; }
+    try { code = S.room.id != null && w && h ? pisoRows().join('\n') : ''; } catch (_) { code = ''; }
     const adj = S.room.id != null ? roomAdjustments() : { any: false };
     const cs = S.room.id != null && w && h ? coverStats() : null;
     $('.lvbare').innerHTML = !cs || !cs.built ? '' :
       `<div>🧱 <b>quarto montado com pisos de mobi</b> (${cs.pct}% do chão coberto): ${cs.bare} quadrados sem mobi e ${cs.shadow} só com sombra ` +
       (S.hideBare ? '<span class="ok">vão como x (não aparecem no jogo)</span>' : '<span class="dim">ficam com a altura do chão</span>') +
       ` <button data-a="bareToggle">${S.hideBare ? 'manter como chão' : 'usar x'}</button>` +
-      (hasExactFloor() ? `<br><span class="dim">Esses x aparecem só no mapa acima. O código abaixo, a cópia e a colagem levam o <b>floor do quarto</b> ` +
-        `exato (igual ao editor de planta).</span>` : '') +
+      `<br><span class="dim">O código abaixo é o que vai na <b>cópia</b> e na colagem${S.hideBare ? ', com esses x' : ''}.</span>` +
       (S.furni.floor.size ? '' : ' <span class="warn">(sem a lista de mobis: o tamanho dos mobis grandes pode faltar)</span>') + `</div>`;
     let fb = null;
     try { fb = code ? floorForBuild() : null; } catch (_) { fb = null; }
