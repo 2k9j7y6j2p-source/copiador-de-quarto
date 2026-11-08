@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.32
+// @version      3.0.33
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.32';
+  const VERSION = '3.0.33';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -645,6 +645,7 @@
         S.lvPick.clear();
         if (S.lajPrev) S.lajPrev.clear(); // as prévias do quarto anterior somem com ele
         S.lajMode = false;
+        try { if (CNA.modo) { CNA.parar = true; if (CNA.modo !== 'colocando') cnaLimpa(); } } catch (_) { /* ignorado */ }
         S.lvSel = null;
         S.lvDrag = null;
         S.mkDrag = null;
@@ -1183,7 +1184,7 @@
     const nativeSend = ws.send;
     ws.send = function (data) {
       if (S.rec) { try { recordOut(data); } catch (_) { /* ignorado */ } }
-      if (!S.bloqueado) { try { aprOut(data); } catch (_) { /* ignorado */ } try { if (!ownSend) cncOut(data); } catch (_) { /* ignorado */ } }
+      if (!S.bloqueado) { try { aprOut(data); } catch (_) { /* ignorado */ } try { if (!ownSend) cncOut(data); } catch (_) { /* ignorado */ } try { if (!ownSend) cnaOut(data); } catch (_) { /* ignorado */ } }
       // altura do clique: o colocar espera o :up certo e depois vai para o hotel
       if (!ownSend && !S.bloqueado) {
         const self = this;
@@ -1199,6 +1200,8 @@
         }
         if (walk) {
           S.lastWalk = { ...walk, t: Date.now() };
+          // Preencher área: o clique marca um canto e o boneco não anda.
+          if ((CNA.modo === 'canto1' || CNA.modo === 'canto2') && S.room.id != null) { try { cnaCanto(walk.x, walk.y); } catch (_) { /* ignorado */ } return undefined; }
           // Modo marcador: o clique vira um ponto da área e o boneco não anda.
           if (BUILDS.pick && S.room.id != null) {
             const b = BUILDS.list.find((k) => k.id === BUILDS.pick);
@@ -5469,7 +5472,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
-        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, lote: (n) => cncLote(n), get state() { return CN; }, get compra() { return CNC; } },
+        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, lote: (n) => cncLote(n), area: { seleciona: () => cnaSeleciona(), limpa: () => cnaLimpa(), parar: () => { CNA.parar = true; }, get state() { return CNA; } }, get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -6165,6 +6168,13 @@
               <div class="cnspst dim"></div>
             </div>
             <div class="cncard">
+              <div class="verdinho"><b>▦ Preencher área</b> <span class="dim">(o mesmo mobi em linha reta, no mesmo :up)</span></div>
+              <div class="cnrow"><button data-a="cnAreaSel">📐 selecionar área</button>
+                <button data-a="cnAreaLimpa">cancelar</button>
+                <button data-a="cnAreaPara" hidden>⏹ parar</button></div>
+              <div class="cnareast dim"></div>
+            </div>
+            <div class="cncard">
               <div class="verdinho"><b>⚡ Atalhos</b></div>
               <div class="cnrow"><button data-a="cnHideWired">mostrar / esconder os wired (:hidewired)</button></div>
             </div>
@@ -6627,6 +6637,9 @@
     if (a === 'cnSpMais' || a === 'cnSpMenos') { cnMuda('sp', a === 'cnSpMais' ? 2 : -2); return; }
     if (a === 'cnSpDesliga') { cnDesliga('sp'); return; }
     if (a === 'cnStDesliga') { cnDesliga('st'); return; }
+    if (a === 'cnAreaSel') { cnaSeleciona(); return; }
+    if (a === 'cnAreaLimpa') { if (CNA.modo === 'colocando') CNA.parar = true; else cnaLimpa(); return; }
+    if (a === 'cnAreaPara') { CNA.parar = true; toast('Parando…'); return; }
     if (a === 'cnHideWired') { if (!connected()) { toast('Sem conexão com o jogo', true); return; } send(OUT.CHAT, (w) => w.str(':hidewired').int(0)); lastCommandAt = Date.now(); toast('Mandei :hidewired'); return; }
     if (a === 'aprToggle') { aprToggle(); return; }
     if (a === 'aprAgora') { if (!APR.on) aprToggle(); else { APR.volta = Date.now(); aprPoe(aprWiredIds()); renderApr(); } return; }
@@ -8220,8 +8233,10 @@
     if (CNC.frags.size >= d.total) { cncGuarda([].concat(...CNC.frags.values())); CNC.frags.clear(); }
   });
   const cncNome = (sp) => (S.furni.floor.get(sp) || {}).name || classnameOf('floor', sp) || 'mobi';
-  async function cncCompra(sp) {
-    if (CNC.comprando || !connected() || !CNC_LOTE) return;
+  async function cncCompra(sp, quantos) {
+    const lote = quantos == null ? CNC_LOTE : quantos; // quantos: o "preencher área" compra só o que falta
+    let veio = 0;
+    if (CNC.comprando || !connected() || !lote) return 0;
     CNC.comprando = true;
     const key = itemKey('floor', sp);
     try {
@@ -8230,11 +8245,11 @@
         await ensureOffers([key], makeCtx({ log: (m) => pasteLog(m), confirm: () => true }), big ? { direct: true } : {});
       }
       const o = S.catalog.offers[key];
-      if (!o) { toast(`Não achei ${cncNome(sp)} à venda no catálogo`, true); return; }
+      if (!o) { toast(`Não achei ${cncNome(sp)} à venda no catálogo`, true); return 0; }
       // +50 (pedido dela): de uma vez quando a oferta deixa comprar vários; senão um por um, com a pausa do hotel
       const por = o.count || 1;
-      let falta = Math.ceil(CNC_LOTE / por), veio = 0, fim = 'ok';
-      toast(`🛒 Comprando +${CNC_LOTE} ${cncNome(sp)}…`);
+      let falta = Math.ceil(lote / por), fim = 'ok';
+      toast(`🛒 Comprando +${lote} ${cncNome(sp)}…`);
       while (falta > 0 && connected()) {
         const qtd = o.bundle ? Math.min(falta, 99) : 1;
         const p = waitFor(PURCHASE_KINDS, null, 8000);
@@ -8256,6 +8271,7 @@
       else if (fim !== 'ok') toast(`O hotel não vendeu ${cncNome(sp)}${veio ? ` (parei em ${veio})` : ''}`, true);
       if (veio) { await sleep(400); await cncCarrega(true); }
     } catch (e) { toast('Erro na compra: ' + e.message, true); } finally { CNC.comprando = false; renderCn(); }
+    return veio;
   }
   // o que o jogo manda: colocar mobi (conta o inventário) e o clique depois que acabou (compra mais 50)
   function cncOut(data) {
@@ -8352,12 +8368,131 @@
     });
     return true;
   }
+  // ---- Preencher área (pedido dela): 2 cliques no chão marcam os cantos da área, ela põe 1 mobi e o ajudante põe o
+  // mesmo mobi em todos os outros quadrados, em linhas retas, no mesmo :up e no mesmo giro (o :up do Habblet vale
+  // para os próximos mobis colocados). Falta mobi no inventário: pergunta antes de comprar.
+  const CNA = { modo: null, a: null, keys: new Set(), sp: null, feito: 0, total: 0, parar: false, msg: '' };
+  const CNA_MAX = 400;
+  function cnaRet(a, b) {
+    const keys = new Set();
+    const door = S.room.door;
+    for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) {
+      for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) {
+        if (!isVoid(x, y) && !(door && door.x === x && door.y === y)) keys.add(x + ',' + y);
+      }
+    }
+    return keys;
+  }
+  function cnaLimpa(msg) {
+    for (const k of CNA.keys) lajPreview(k, false);
+    if (CNA.a) lajPreview(CNA.a.x + ',' + CNA.a.y, false);
+    Object.assign(CNA, { modo: null, a: null, keys: new Set(), sp: null, parar: false, msg: msg || '' });
+    renderCn();
+  }
+  function cnaSeleciona() {
+    if (!CN.modo) { toast('Ligue o modo construtor primeiro', true); return; }
+    if (S.room.id == null) { toast('Entre num quarto primeiro', true); return; }
+    if (CNA.modo === 'colocando') { toast('Espere terminar (ou clique em parar)', true); return; }
+    cnaLimpa();
+    CNA.modo = 'canto1';
+    gameNotice('📐 Clique no PRIMEIRO canto da área (o boneco não anda)');
+    renderCn();
+  }
+  // clique no chão enquanto escolhe os cantos: marca e o boneco não anda
+  function cnaCanto(x, y) {
+    if (isVoid(x, y)) { gameNotice('📐 Esse quadrado não tem piso: clique em outro'); return; }
+    if (CNA.modo === 'canto1') {
+      CNA.a = { x, y };
+      CNA.modo = 'canto2';
+      lajPreview(x + ',' + y, true);
+      gameNotice(`📐 1º canto x=${x} y=${y}. Agora clique no canto OPOSTO`);
+    } else if (CNA.modo === 'canto2') {
+      const keys = cnaRet(CNA.a, { x, y });
+      if (keys.size > CNA_MAX) { gameNotice(`📐 Área grande demais (${keys.size} quadrados; máximo ${CNA_MAX}). Clique num canto mais perto`); return; }
+      lajPreview(CNA.a.x + ',' + CNA.a.y, false);
+      CNA.keys = keys;
+      CNA.modo = 'esperando';
+      for (const k of keys) lajPreview(k, true);
+      gameNotice(`📐 Área de ${keys.size} quadrados. Agora coloque 1 mobi nela: eu ponho o mesmo mobi no resto, no mesmo :up`);
+    }
+    renderCn();
+  }
+  // o jogo vai colocar 1 mobi com a área pronta: esse é o mobi que preenche a área
+  function cnaOut(data) {
+    if (CNA.modo !== 'esperando' || S.room.id == null) return;
+    const tag = Object.prototype.toString.call(data);
+    const u8 = tag === '[object ArrayBuffer]' ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
+    if (!u8 || u8.length < 8) return;
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    if (dv.getInt16(4) !== OUT.PLACE) return;
+    const txt = new TextDecoder().decode(u8.subarray(8, 8 + dv.getUint16(6)));
+    if (txt.includes(':w=')) return; // mobi de parede não preenche área
+    const [ids, xs, ys] = txt.split(' ');
+    const id = Number(ids), px = Number(xs), py = Number(ys);
+    if (!Number.isFinite(id)) return;
+    CNA.modo = 'colocando';
+    CNA.parar = false;
+    CNC.pendente = null; // quem compra o que falta aqui é o "preencher área" (pergunta antes)
+    renderCn();
+    cnaPreenche(id, px, py).catch((e) => { CNA.msg = 'erro: ' + e.message; gameNotice('📐 ' + CNA.msg); }).finally(() => cnaLimpa(CNA.msg));
+  }
+  async function cnaPreenche(id, px, py) {
+    const r = await waitFor(['floorAdd'], (k, d) => d.id === id || (d.x === px && d.y === py), 5000);
+    const o = (r && r.data) || S.floor.get(id);
+    if (!o) { CNA.msg = 'o hotel não colocou o primeiro mobi'; gameNotice('📐 ' + CNA.msg); return; }
+    const sp = o.spriteId, rot = o.rot || 0, nome = cncNome(sp);
+    // os quadrados que faltam, linha por linha; mobi maior que 1x1 ocupa os quadrados dele e só entra se couber
+    const usados = new Set(footprintOf(sp, o.x, o.y, rot).map(([x, y]) => x + ',' + y));
+    const alvos = [];
+    const ks = [...CNA.keys].map((k) => k.split(',').map(Number)).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    for (const [x, y] of ks) {
+      const fp = footprintOf(sp, x, y, rot).map(([a, b]) => a + ',' + b);
+      if (fp.every((k) => CNA.keys.has(k) && !usados.has(k))) { fp.forEach((k) => usados.add(k)); alvos.push({ x, y }); }
+    }
+    for (const k of CNA.keys) lajPreview(k, false); // os de verdade entram no lugar das marcas
+    if (!alvos.length) { CNA.msg = 'a área já ficou cheia'; return; }
+    CNA.sp = sp; CNA.total = alvos.length; CNA.feito = 0;
+    renderCn();
+    const meus = async () => (await readInventory(10000)).filter((it) => it.type === 'S' && it.spriteId === sp && !(it.expires > -1));
+    let inv = await meus();
+    if (inv.length < alvos.length) {
+      const falta = alvos.length - inv.length;
+      const of = S.catalog.offers[itemKey('floor', sp)];
+      const preco = of && of.credits ? ` (cerca de ${Math.ceil(falta / (of.count || 1)) * of.credits} moedas)` : '';
+      if (W.confirm(`Preencher a área: a área precisa de ${alvos.length} ${nome} e você tem ${inv.length}.\n` +
+        `Comprar os ${falta} que faltam${preco}?\n(Cancelar = coloco só os que você tem)`)) {
+        await cncCompra(sp, falta);
+        inv = await meus();
+      }
+    }
+    const n = Math.min(inv.length, alvos.length);
+    if (!n) { CNA.msg = `sem ${nome} no inventário`; gameNotice('📐 ' + CNA.msg); return; }
+    gameNotice(`📐 Colocando ${n} ${nome} na área, no mesmo :up${n < alvos.length ? ` (faltam ${alvos.length - n})` : ''}`);
+    let ok = 0, erro = 0;
+    for (let i = 0; i < n; i++) {
+      if (CNA.parar || !connected() || S.room.id == null) break;
+      const it = inv[i], t = alvos[i];
+      const p = waitFor(['floorAdd', 'notification'],
+        (k, d) => (k === 'notification' ? /placement/i.test(d.type) : d.id === it.id || d.id === it.ref), 3000);
+      send(OUT.PLACE, (w) => w.str(`${it.id} ${t.x} ${t.y} ${rot}`));
+      const res = await p;
+      if (res && res.kind === 'floorAdd') ok++; else erro++;
+      CNA.feito = i + 1;
+      renderCn();
+      await sleep(350);
+    }
+    CNA.msg = `${ok} ${nome} colocados na área${erro ? `, ${erro} não entraram` : ''}${CNA.parar ? ' (parei)' : ''}`;
+    gameNotice('📐 ' + CNA.msg);
+    toast('📐 ' + CNA.msg);
+    cncCarrega(true); // a conta do inventário mudou
+  }
   function cnModo(on) {
     CN.modo = !!on;
     store.set('copiadorDeQuarto.modoConstrutor.v1', CN.modo);
     if (CN.modo) { cncCarrega(true); toast('Modo construtor ligado'); }
     else {
       CNC.pendente = null;
+      if (CNA.modo === 'colocando') CNA.parar = true; else if (CNA.modo) cnaLimpa();
       for (const t of ['up', 'st', 'sp']) if (CN.ligado[t] || (t === 'up' && upKnown() && S.up.mode === 'on')) cnDesliga(t, true);
       toast('Modo construtor desligado');
     }
@@ -8419,6 +8554,18 @@
     $('[data-o="cnMesma"]').checked = CN.mesma;
     $('[data-o="cnClique"]').checked = CN.clique;
     $('.cnview').classList.toggle('desligado', !CN.modo);
+    {
+      const st = $('.cnareast');
+      if (st) {
+        st.innerHTML = CNA.modo === 'canto1' ? '<span class="warn">👆 No jogo, clique no 1º canto da área.</span>'
+          : CNA.modo === 'canto2' ? '<span class="warn">👆 Agora clique no canto oposto.</span>'
+            : CNA.modo === 'esperando' ? `<span class="ok">Área de ${CNA.keys.size} quadrados.</span> Coloque 1 mobi nela: eu ponho o mesmo no resto, no mesmo :up e no mesmo giro.`
+              : CNA.modo === 'colocando' ? `Colocando ${esc(cncNome(CNA.sp))}: ${CNA.feito} de ${CNA.total}…`
+                : CNA.msg ? esc(CNA.msg) : '2 cliques no chão marcam os cantos; depois você põe 1 mobi e eu completo a área.';
+      }
+      const pa = $('[data-a="cnAreaPara"]');
+      if (pa) pa.hidden = CNA.modo !== 'colocando';
+    }
     $('.cncompra').innerHTML = !CN.modo ? '' : (CNC.pendente != null ? `<span class="warn">Acabou ${esc(cncNome(CNC.pendente))}: clique no jogo que eu compro mais ${CNC_LOTE}.</span> ` : '') +
       (CNC.comprados ? `🛒 comprei ${CNC.comprados} mobi(s) neste modo (${CNC.gasto} moedas).` : '🛒 compra automática pronta.');
     const u = S.up;
