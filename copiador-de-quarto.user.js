@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.22
+// @version      3.0.23
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.22';
+  const VERSION = '3.0.23';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -5430,7 +5430,7 @@
         obras: { register: registerObra, check: checkCopies, isProtected: roomProtected },
         lajotas: { layout: lajotasLayout, put: lajotasPut, height: lajotasHeight, within: lajotasIn, tile: lajTile, setMode: (on) => { S.lajMode = !!on; },
           get previews() { return S.lajPrev; } },
-        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, get state() { return CN; }, get compra() { return CNC; } },
+        construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, lote: (n) => cncLote(n), get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -5769,6 +5769,10 @@
     .cnview { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
     .cnview > * { flex-shrink: 0; }
     .cnview[hidden] { display: none !important; }
+    /* Ajudante de construção: botão e janela próprios, acima do botão do copiador */
+    .fab.fabcn { bottom: 134px; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    .panel.cnpanel { top: auto; bottom: 176px; width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 200px); }
+    .cnpanel .cnview { border-top: 0; padding-bottom: 12px; }
     .cncard { margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
     .cnrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 4px; }
     .cnview.desligado .cncard:not(.cnmodo) { opacity: .45; }
@@ -5821,6 +5825,7 @@
     root.innerHTML = `
       <style>${CSS}</style>
       <button class="fab" title="Copiador de Quarto"><span class="mkon" hidden>📍 marcando · </span>&gt;_ <span class="n">0</span></button>
+      <button class="fab fabcn" title="Ajudante de construção">🧰 Ajudante de construção</button>
       <div class="panel" hidden>
         <header><span class="hd">&gt; copiador_de_quarto <span class="ver">v${VERSION}</span><span class="cur">▌</span></span><span class="sp"></span><span class="role"></span><button class="x lo" data-a="logout" hidden>[sair]</button><button class="x" data-a="close" title="Fechar">[x]</button></header>
         <div class="login" hidden>
@@ -5867,7 +5872,6 @@
             <button data-t="paste" class="tab-paste" title="Colar no meu quarto" aria-selected="true">🏠 Colar</button>
             <button data-t="wired">⚡ Wired</button>
             <button data-t="aprender" title="Aprender wired junto">🎓 Aprender</button>
-            <button data-t="construtor" title="Ferramenta para construtores">🧰 Construtor</button>
             <button data-t="build">🧱 Construções</button>
             <button class="more" type="button">mais ▸</button>
             <button data-t="floor" class="t2" title="Lista dos mobis do quarto">📦 Mobis</button>
@@ -5945,48 +5949,6 @@
             <div class="lvpad dim">Entre no seu quarto, clique em “colar” e depois no quadrado do canto de cima. Eu coloco os mobis e os wired
               (comprando o que faltar) e programo cada wired com a configuração lida, trocando os mobis e as variáveis pelos novos.</div>
             <details class="lvpad"><summary>todas as pilhas lidas</summary><div class="wmreadout"></div></details>
-          </div>
-        </div>
-        <div class="cnview" hidden>
-          <div class="lvpad"><b>🧰 Ferramenta para construtores</b> <span class="dim">Mude o número e eu mando o comando no jogo por você:
-            nada de digitar. Use ▲ ▼, digite o número ou as setinhas do teclado.</span></div>
-          <div class="cncard cnmodo">
-            <label class="chk verdinho"><input type="checkbox" data-o="cnModo"> <b>Modo construtor ligado</b></label>
-            <div class="dim" style="padding-top:4px">Ligado: as ferramentas abaixo funcionam e, quando o mobi que você está colocando acabar,
-              o próximo clique no jogo compra mais 1 dele. Desligado: desligo o :up, o :state e o :spin no jogo e não compro nada.</div>
-            <div class="cncompra dim" style="padding-top:4px"></div>
-          </div>
-          <div class="cncard">
-            <div class="verdinho"><b>⬆ Altura</b> <span class="dim">(:up · de −25 a 63)</span></div>
-            <div class="cnrow"><button data-a="cnUpMenos" title="diminuir">▼</button>
-              <input type="number" data-o="cnUp" value="0" step="0.5" min="-25" max="63">
-              <button data-a="cnUpMais" title="aumentar">▲</button>
-              <label class="dim">passo <select data-o="cnUpPasso"><option>0.01</option><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select></label>
-              <button data-a="cnUpDesliga">desligar</button></div>
-            <label class="chk"><input type="checkbox" data-o="cnEmCima"> 📐 clicar num mobi põe o :up no topo dele (o próximo mobi vai em cima, apoiado)</label>
-            <label class="chk"><input type="checkbox" data-o="cnMesma"> 🎯 clicar num mobi põe o :up na mesma altura dele (o mais usado nas sombras)</label>
-            <label class="chk"><input type="checkbox" data-o="cnClique"> 📍 só clicar: o mobi vai na altura do quadrado onde você clicou (sombra em cima de sombra vai 0,1 acima)</label>
-            <div class="cnupst dim"></div>
-          </div>
-          <div class="cncard">
-            <div class="verdinho"><b>🔁 Estado do mobi</b> <span class="dim">(:state)</span></div>
-            <div class="cnrow"><button data-a="cnStMenos" title="diminuir">▼</button>
-              <input type="number" data-o="cnSt" value="0" step="1" min="0" max="99">
-              <button data-a="cnStMais" title="aumentar">▲</button>
-              <button data-a="cnStDesliga">desligar</button></div>
-            <div class="cnstst dim"></div>
-          </div>
-          <div class="cncard">
-            <div class="verdinho"><b>🔄 Girar o mobi</b> <span class="dim">(:spin · <span class="cnspmax">0, 2, 4 ou 6</span>)</span></div>
-            <div class="cnrow"><button data-a="cnSpMenos" title="diminuir">▼</button>
-              <input type="number" data-o="cnSp" value="0" step="2" min="0" max="6">
-              <button data-a="cnSpMais" title="aumentar">▲</button>
-              <button data-a="cnSpDesliga">desligar</button></div>
-            <div class="cnspst dim"></div>
-          </div>
-          <div class="cncard">
-            <div class="verdinho"><b>⚡ Atalhos</b></div>
-            <div class="cnrow"><button data-a="cnHideWired">mostrar / esconder os wired (:hidewired)</button></div>
           </div>
         </div>
         <div class="aprview" hidden>
@@ -6119,12 +6081,66 @@
         </div>
         <footer></footer>
       </div>
+      <div class="panel cnpanel" hidden>
+        <header class="cnhead"><span class="hd">🧰 Ajudante de construção</span><span class="sp"></span><button class="x" data-a="cnFechar" title="Fechar">[x]</button></header>
+          <div class="cnview">
+            <div class="lvpad"><span class="dim">Mude o número e eu mando o comando no jogo por você: nada de digitar.
+              Use ▲ ▼, digite o número ou as setinhas do teclado.</span></div>
+            <div class="cncard cnmodo">
+              <label class="chk verdinho"><input type="checkbox" data-o="cnModo"> <b>Modo construtor ligado</b></label>
+              <div class="dim" style="padding-top:4px">Ligado: as ferramentas abaixo funcionam e, quando o mobi que você está colocando acabar,
+                o próximo clique no jogo compra mais dele. Desligado: desligo o :up, o :state e o :spin no jogo e não compro nada.</div>
+              <div class="cnrow" style="padding-top:6px"><label>🛒 Quando acabar, comprar
+                <input type="number" data-o="cnLote" value="50" step="1" min="0" max="500" title="0 = não comprar"> unidades</label>
+                <span class="dim">(0 = não comprar)</span></div>
+              <div class="cncompra dim" style="padding-top:4px"></div>
+            </div>
+            <div class="cncard">
+              <div class="verdinho"><b>⬆ Altura</b> <span class="dim">(:up · de −25 a 63)</span></div>
+              <div class="cnrow"><button data-a="cnUpMenos" title="diminuir">▼</button>
+                <input type="number" data-o="cnUp" value="0" step="0.5" min="-25" max="63">
+                <button data-a="cnUpMais" title="aumentar">▲</button>
+                <label class="dim">passo <select data-o="cnUpPasso"><option>0.01</option><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select></label>
+                <button data-a="cnUpDesliga">desligar</button></div>
+              <label class="chk"><input type="checkbox" data-o="cnEmCima"> 📐 clicar num mobi põe o :up no topo dele (o próximo mobi vai em cima, apoiado)</label>
+              <label class="chk"><input type="checkbox" data-o="cnMesma"> 🎯 clicar num mobi põe o :up na mesma altura dele (o mais usado nas sombras)</label>
+              <label class="chk"><input type="checkbox" data-o="cnClique"> 📍 só clicar: o mobi vai na altura do quadrado onde você clicou (sombra em cima de sombra vai 0,1 acima)</label>
+              <div class="cnupst dim"></div>
+            </div>
+            <div class="cncard">
+              <div class="verdinho"><b>🔁 Estado do mobi</b> <span class="dim">(:state)</span></div>
+              <div class="cnrow"><button data-a="cnStMenos" title="diminuir">▼</button>
+                <input type="number" data-o="cnSt" value="0" step="1" min="0" max="99">
+                <button data-a="cnStMais" title="aumentar">▲</button>
+                <button data-a="cnStDesliga">desligar</button></div>
+              <div class="cnstst dim"></div>
+            </div>
+            <div class="cncard">
+              <div class="verdinho"><b>🔄 Girar o mobi</b> <span class="dim">(:spin · <span class="cnspmax">0, 2, 4 ou 6</span>)</span></div>
+              <div class="cnrow"><button data-a="cnSpMenos" title="diminuir">▼</button>
+                <input type="number" data-o="cnSp" value="0" step="2" min="0" max="6">
+                <button data-a="cnSpMais" title="aumentar">▲</button>
+                <button data-a="cnSpDesliga">desligar</button></div>
+              <div class="cnspst dim"></div>
+            </div>
+            <div class="cncard">
+              <div class="verdinho"><b>⚡ Atalhos</b></div>
+              <div class="cnrow"><button data-a="cnHideWired">mostrar / esconder os wired (:hidewired)</button></div>
+            </div>
+          </div>
+      </div>
       <input type="file" class="file" accept=".json,.txt,application/json,text/plain" hidden>
       <div class="toast"></div>`;
     document.documentElement.appendChild(host);
 
     const $ = (sel) => root.querySelector(sel);
-    ui = { root, host, fab: $('.fab'), panel: $('.panel'), tab: 'paste', filter: '' };
+    ui = { root, host, fab: $('.fab'), panel: $('.panel'), fabcn: $('.fabcn'), cnpanel: $('.cnpanel'), tab: 'paste', filter: '' };
+    ui.fabcn.addEventListener('click', () => {
+      ui.cnpanel.hidden = !ui.cnpanel.hidden;
+      if (!ui.cnpanel.hidden) root.appendChild(ui.cnpanel); // fica por cima do painel do copiador
+      renderCn();
+    });
+    for (const t of ['keydown', 'keyup', 'keypress']) ui.cnpanel.addEventListener(t, (e) => e.stopPropagation());
 
     ui.fab.addEventListener('click', () => {
       ui.panel.hidden = !ui.panel.hidden;
@@ -6143,6 +6159,12 @@
     }
     $('[data-o="cnUpPasso"]').addEventListener('change', (e) => { CN.upPasso = Number(e.target.value) || 0.5; $('[data-o="cnUp"]').step = String(CN.upPasso); });
     $('[data-o="cnModo"]').addEventListener('change', (e) => cnModo(e.target.checked));
+    $('[data-o="cnLote"]').addEventListener('change', (e) => {
+      const n = cncLote(e.target.value);
+      e.target.value = n;
+      toast(n ? `🛒 Quando acabar, compro ${n} de uma vez` : '🛒 Compra automática desligada (0)');
+      renderCn();
+    });
     $('[data-o="cnEmCima"]').addEventListener('change', (e) => { CN.emCima = !!e.target.checked; if (CN.emCima) CN.mesma = false; renderCn();
       toast(CN.emCima ? 'Clique num mobi e o próximo vai em cima dele' : 'Em cima do mobi clicado: desligado'); });
     $('[data-o="cnClique"]').addEventListener('change', (e) => { CN.clique = !!e.target.checked;
@@ -6330,6 +6352,7 @@
     });
 
     makeDraggable(ui.panel, $('header'));
+    makeDraggable(ui.cnpanel, $('.cnhead'));
     setTimeout(showWelcome, 0); // se o nick já chegou antes do painel
     vigiaAmigos();
     if (S.log.length) $('.log').textContent = S.log.join('\n');
@@ -6346,6 +6369,7 @@
         panel.style.left = Math.max(0, Math.min(window.innerWidth - 60, ev.clientX - dx)) + 'px';
         panel.style.top = Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - dy)) + 'px';
         panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
       };
       const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
       addEventListener('pointermove', move);
@@ -6513,6 +6537,7 @@
       return;
     }
     if (a === 'close') { ui.panel.hidden = true; return; }
+    if (a === 'cnFechar') { ui.cnpanel.hidden = true; return; }
     if (a === 'furnidata') {
       const url = prompt('URL do FurnitureData.json do hotel (fica no renderer-config.json, campo "furnidata.url"):');
       if (!url) return;
@@ -8118,8 +8143,18 @@
   const SPIN_NOME = { 0: 'posição normal', 2: '1º giro', 4: '2º giro', 6: 'último giro' };
   const CN = { up: 0, upPasso: 0.5, st: 0, sp: 0, timer: {}, enviado: {}, ligado: {}, modo: false, emCima: false, mesma: false, clique: false };
   // Compra automática do modo construtor: o mobi que você está colocando acabou no inventário → o próximo clique
-  // no jogo compra mais 1 dele (um de cada vez, só quando precisa).
-  const CNC = { inv: new Map(), conta: new Map(), carregado: false, carregando: null, pendente: null, comprando: false, comprados: 0, gasto: 0, frags: new Map() };
+  // no jogo compra mais 50 dele (CNC_LOTE), só quando precisa.
+  // quantos comprar quando o mobi acaba: a pessoa escolhe na aba (padrão 50; 0 = não comprar)
+  const CNC_LOTE_KEY = 'copiadorDeQuarto.compraLote.v1';
+  const cncLoteOk = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(500, Math.max(0, n)) : 50; };
+  let CNC_LOTE = (() => { const v = store.get(CNC_LOTE_KEY); return v == null ? 50 : cncLoteOk(v); })();
+  function cncLote(v) {
+    CNC_LOTE = cncLoteOk(v);
+    store.set(CNC_LOTE_KEY, CNC_LOTE);
+    if (!CNC_LOTE) CNC.pendente = null;
+    return CNC_LOTE;
+  }
+  const CNC = { lote: 0, inv: new Map(), conta: new Map(), carregado: false, carregando: null, pendente: null, comprando: false, comprados: 0, gasto: 0, frags: new Map() };
   function cncGuarda(items) {
     CNC.inv.clear(); CNC.conta.clear();
     for (const it of items) {
@@ -8144,7 +8179,7 @@
   });
   const cncNome = (sp) => (S.furni.floor.get(sp) || {}).name || classnameOf('floor', sp) || 'mobi';
   async function cncCompra(sp) {
-    if (CNC.comprando || !connected()) return;
+    if (CNC.comprando || !connected() || !CNC_LOTE) return;
     CNC.comprando = true;
     const key = itemKey('floor', sp);
     try {
@@ -8154,20 +8189,33 @@
       }
       const o = S.catalog.offers[key];
       if (!o) { toast(`Não achei ${cncNome(sp)} à venda no catálogo`, true); return; }
-      const p = waitFor(PURCHASE_KINDS, null, 8000);
-      send(OUT.PURCHASE, (w) => w.int(o.pageId).int(o.offerId).str('').int(1));
-      const r = await p;
-      if (r && r.kind === 'purchaseOk') {
-        CNC.comprados += o.count || 1;
-        CNC.gasto += o.credits || 0;
-        toast(`🛒 Comprei mais 1 ${cncNome(sp)}${o.credits ? ` (${o.credits} moeda${o.credits === 1 ? '' : 's'})` : ''}`);
-        await sleep(400);
-        await cncCarrega(true);
-      } else if (r && r.kind === 'notEnoughBalance') toast('Sem moedas para comprar mais', true);
-      else toast(r ? `O hotel não vendeu ${cncNome(sp)}` : 'O hotel não respondeu à compra', true);
+      // +50 (pedido dela): de uma vez quando a oferta deixa comprar vários; senão um por um, com a pausa do hotel
+      const por = o.count || 1;
+      let falta = Math.ceil(CNC_LOTE / por), veio = 0, fim = 'ok';
+      toast(`🛒 Comprando +${CNC_LOTE} ${cncNome(sp)}…`);
+      while (falta > 0 && connected()) {
+        const qtd = o.bundle ? Math.min(falta, 99) : 1;
+        const p = waitFor(PURCHASE_KINDS, null, 8000);
+        send(OUT.PURCHASE, (w) => w.int(o.pageId).int(o.offerId).str('').int(qtd));
+        const r = await p;
+        if (!r || r.kind !== 'purchaseOk') { fim = r ? r.kind : 'semResposta'; break; }
+        falta -= qtd;
+        veio += qtd * por;
+        CNC.comprados += qtd * por;
+        CNC.gasto += qtd * (o.credits || 0);
+        CNC.lote = veio;
+        renderCn();
+        if (falta > 0) await sleep(1300); // o hotel ignora compras com menos de 1 s entre elas
+      }
+      const preco = veio && o.credits ? ` (${(veio / por) * o.credits} moeda${(veio / por) * o.credits === 1 ? '' : 's'})` : '';
+      if (veio) toast(`🛒 Comprei +${veio} ${cncNome(sp)}${preco}`);
+      if (fim === 'notEnoughBalance') toast(veio ? `Acabaram as moedas depois de ${veio}` : 'Sem moedas para comprar mais', true);
+      else if (fim === 'semResposta' || (!veio && fim === 'ok')) toast(`O hotel não respondeu à compra${veio ? ` (parei em ${veio})` : ''}`, true);
+      else if (fim !== 'ok') toast(`O hotel não vendeu ${cncNome(sp)}${veio ? ` (parei em ${veio})` : ''}`, true);
+      if (veio) { await sleep(400); await cncCarrega(true); }
     } catch (e) { toast('Erro na compra: ' + e.message, true); } finally { CNC.comprando = false; renderCn(); }
   }
-  // o que o jogo manda: colocar mobi (conta o inventário) e o clique depois que acabou (compra mais 1)
+  // o que o jogo manda: colocar mobi (conta o inventário) e o clique depois que acabou (compra mais 50)
   function cncOut(data) {
     if (!CN.modo || S.nivel !== 'total' || S.room.id == null) return;
     const tag = Object.prototype.toString.call(data);
@@ -8186,7 +8234,7 @@
       CNC.ultimo = { id, sp }; // a altura do clique ainda precisa saber o que está sendo colocado
       const c = Math.max(0, (CNC.conta.get(sp) || 1) - 1);
       CNC.conta.set(sp, c);
-      if (c === 0) { CNC.pendente = sp; toast(`Acabou ${cncNome(sp)}: clique no jogo que eu compro mais 1`); }
+      if (c === 0 && CNC_LOTE > 0) { CNC.pendente = sp; toast(`Acabou ${cncNome(sp)}: clique no jogo que eu compro mais ${CNC_LOTE}`); }
       return;
     }
     if (h === 355 && (CN.emCima || CN.mesma) && u8.length >= 10) cnEmCimaDe(dv.getInt32(6));
@@ -8321,14 +8369,15 @@
     renderCn();
   }
   function renderCn() {
-    if (!ui || ui.tab !== 'construtor') return;
+    if (!ui || !ui.cnpanel || ui.cnpanel.hidden) return;
     const $ = (q) => ui.root.querySelector(q);
     $('[data-o="cnModo"]').checked = CN.modo;
+    { const l = $('[data-o="cnLote"]'); if (l && ui.root.activeElement !== l) l.value = CNC_LOTE; }
     $('[data-o="cnEmCima"]').checked = CN.emCima;
     $('[data-o="cnMesma"]').checked = CN.mesma;
     $('[data-o="cnClique"]').checked = CN.clique;
     $('.cnview').classList.toggle('desligado', !CN.modo);
-    $('.cncompra').innerHTML = !CN.modo ? '' : (CNC.pendente != null ? `<span class="warn">Acabou ${esc(cncNome(CNC.pendente))}: clique no jogo que eu compro mais 1.</span> ` : '') +
+    $('.cncompra').innerHTML = !CN.modo ? '' : (CNC.pendente != null ? `<span class="warn">Acabou ${esc(cncNome(CNC.pendente))}: clique no jogo que eu compro mais ${CNC_LOTE}.</span> ` : '') +
       (CNC.comprados ? `🛒 comprei ${CNC.comprados} mobi(s) neste modo (${CNC.gasto} moedas).` : '🛒 compra automática pronta.');
     const u = S.up;
     $('.cnupst').innerHTML = (upKnown() ? 'No jogo agora: ' + (u.mode === 'on' ? `<span class="ok">:up ${esc(u.z)} ligado</span>`
@@ -9242,6 +9291,9 @@
     ui.root.querySelector('.n').textContent = String(total);
     ui.root.querySelector('.mkon').hidden = S.markMode !== 'game';
     ui.root.querySelector('.mkon').textContent = S.lvPick.size ? `📍 ${S.lvPick.size} · ` : '📍 marcador · ';
+    ui.fabcn.hidden = S.nivel === 'wired'; // conta só de wired não tem o ajudante de construção
+    if (ui.fabcn.hidden) ui.cnpanel.hidden = true;
+    renderCn(); // a janela do ajudante se atualiza junto (só faz algo se estiver aberta)
     if (ui.panel.hidden) return;
 
     const s = snapshot();
@@ -9284,7 +9336,7 @@
     for (const sel of ['.panel > .status', '.panel > .exp', '.panel > .row2']) ui.root.querySelector(sel).hidden = !logged;
     ui.root.querySelector('.login').hidden = logged;
     if (!logged) {
-      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview', '.aprview', '.cnview']) ui.root.querySelector(sel).hidden = true;
+      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview', '.aprview']) ui.root.querySelector(sel).hidden = true;
       renderLogin();
       return;
     }
@@ -9302,12 +9354,11 @@
       ui.root.querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.t === ui.tab)));
     }
     const isApr = ui.tab === 'aprender';
-    const isCn = ui.tab === 'construtor';
+    const isCn = false; // o ajudante de construção tem a janela dele
     ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn || ui.tab === 'map' || ui.tab === 'obras';
     ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn;
     ui.root.querySelector('.wmview').hidden = !isWm;
     ui.root.querySelector('.aprview').hidden = !isApr;
-    ui.root.querySelector('.cnview').hidden = !isCn;
     ui.root.querySelector('.buildview').hidden = !isBuild;
     ui.root.querySelector('.cdview').hidden = !isCd;
     ui.root.querySelector('.paste').hidden = !isPaste;
