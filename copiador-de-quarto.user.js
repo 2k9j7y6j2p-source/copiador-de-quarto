@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copiador de Quarto (Habbo / Nitro)
 // @namespace    copiador-de-quarto
-// @version      3.0.7
+// @version      3.0.8
 // @description  Copia os mobis de um quarto (nome + coordenadas) e cola no seu quarto: compra o que falta e coloca cada mobi no lugar.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.7';
+  const VERSION = '3.0.8';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -799,6 +799,28 @@
     store.set(ME_KEY, S.me);
     restoreLogin();
     checkTrava();
+    showWelcome();
+  }
+
+  // Boas-vindas em cima do chat, só na tela de quem usa o plugin (não vai para o chat do quarto).
+  const WELCOME = 'Bem-Vindo ao SCRIPT do Cobra - DC vinipetter';
+  let welcomed = false;
+  function showWelcome() {
+    if (welcomed || !S.liberado || S.bloqueado || !ui || !ui.root || typeof document === 'undefined' || !S.me || !S.me.name) return;
+    welcomed = true;
+    const el = document.createElement('div');
+    el.className = 'welcome';
+    const txt = document.createTextNode('');
+    const cur = document.createElement('span');
+    cur.className = 'cur';
+    cur.textContent = '▌';
+    el.append(txt, cur);
+    ui.root.appendChild(el);
+    setTimeout(() => el.classList.add('show'), 30);
+    let i = 0;
+    const tick = setInterval(() => { txt.data = WELCOME.slice(0, ++i); if (i >= WELCOME.length) clearInterval(tick); }, 45);
+    setTimeout(() => el.classList.remove('show'), 9000);
+    setTimeout(() => { clearInterval(tick); el.remove(); }, 9800);
   }
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
@@ -5547,6 +5569,106 @@
     .toast::before { content: '> '; }
     .toast.err { color: var(--bad); border-color: var(--bad); box-shadow: 0 0 16px rgba(255, 95, 95, .3); }
     .toast.show { opacity: 1; }
+
+    /* ---------------- tema 3.0.8: mais limpo (cartões, botões de verdade, verde mais suave) ---------------- */
+    :host {
+      --bg: rgba(10, 16, 13, .96); --bg2: rgba(255, 255, 255, .045); --card: rgba(255, 255, 255, .035); --line: rgba(80, 220, 140, .16);
+      --fg: #dcefe3; --hi: #4be08f; --dim: #8fb3a0; --mute: #5d7d6c; --warn: #f5c84b; --bad: #ff7a7a;
+      --glow: 0 0 4px rgba(75, 224, 143, .35); --r: 10px;
+    }
+    * { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    code, .hd, .log, .plancode, textarea, .lvexporttext, td.num { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+    .fab {
+      border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 600; letter-spacing: .3px;
+      background: rgba(10, 16, 13, .92); border: 1px solid rgba(75, 224, 143, .55); text-shadow: none;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, .45), 0 0 10px rgba(75, 224, 143, .18);
+    }
+    .fab:hover { background: var(--hi); color: #06140c; }
+    .panel {
+      border-radius: 14px; border: 1px solid var(--line); background-image: none; font-size: 12.5px;
+      backdrop-filter: blur(6px); box-shadow: 0 18px 50px rgba(0, 0, 0, .55), 0 0 0 1px rgba(0, 0, 0, .4);
+    }
+    header { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+    .hd { font-weight: 700; font-size: 13px; text-shadow: var(--glow); }
+    .hd .cur { display: none; }
+    button { text-transform: none; border-radius: 8px; }
+    .x { padding: 2px 8px; }
+    .actions { gap: 6px; padding: 8px 14px; }
+    .actions button, .pastebox button, .planbar button, .lvbox button, .lgbox button, .lvpad button, .opts button {
+      padding: 5px 11px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); transition: background .15s, border-color .15s;
+    }
+    .actions button::before, .pastebox button::before, .planbar button::before, .lvbox button::before, .lgbox button::before,
+    .actions button::after, .pastebox button::after, .planbar button::after, .lvbox button::after, .lgbox button::after { content: none; }
+    .actions button:not(:disabled):hover, .pastebox button:hover, .planbar button:hover, .lvbox button:not(:disabled):hover,
+    .lgbox button:not(:disabled):hover, .lvpad button:not(:disabled):hover, .opts button:not(:disabled):hover {
+      background: rgba(75, 224, 143, .14); border-color: rgba(75, 224, 143, .5); color: #fff;
+    }
+    button.primary, .actions button.primary, .lvpad button.primary, .opts button.primary, .lvbox button.primary {
+      background: var(--hi); color: #06140c; border-color: var(--hi); font-weight: 600; text-shadow: none;
+    }
+    .actions button.primary:not(:disabled):hover, .lvpad button.primary:not(:disabled):hover, .opts button.primary:not(:disabled):hover,
+    .lvbox button.primary:not(:disabled):hover { background: #6ff0a8; color: #06140c; }
+    button.danger, .actions button.danger, .opts button.danger { color: var(--bad); border-color: rgba(255, 122, 122, .35); }
+    .row2 { padding: 8px 14px 10px; gap: 8px; }
+    .tabs { gap: 4px; }
+    .tabs button { padding: 5px 11px; border: 1px solid transparent; border-radius: 999px; color: var(--dim); }
+    .tabs button:hover { background: var(--bg2); color: var(--fg); }
+    .tabs button[aria-selected="true"] { background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .45); color: #fff; text-shadow: none; }
+    .tabs button[aria-selected="true"]::before { content: none; }
+    .tabs .more { color: var(--mute); }
+    .tabs .t2 { display: none; }
+    .tabs.open .t2 { display: inline-block; }
+    input, select, textarea { border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; background: var(--bg2); color: var(--fg); }
+    input:focus, select:focus, textarea:focus { border-color: rgba(75, 224, 143, .6); }
+    .filter { border-radius: 999px; }
+    .status, .src { padding: 10px 14px 4px; }
+    .lvpad { padding: 10px 14px 0; }
+    .opts { padding: 6px 14px; }
+    .height, .lvbox, .floorbox, .lgbox, .wgc, .wmview .wgc, .cdnotes {
+      margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-top: 1px solid var(--line);
+      border-radius: var(--r); background: var(--card);
+    }
+    .lgbox:first-child { border-top: 1px solid var(--line); }
+    .plan { margin: 10px 14px 0; border: 1px solid var(--line); border-radius: var(--r); }
+    .log { margin: 10px 14px 12px; border-radius: 8px; border-left: 3px solid var(--hi); background: rgba(0, 0, 0, .45); }
+    .wmprompt { border-radius: var(--r); border: 1px solid var(--hi); box-shadow: 0 0 14px rgba(75, 224, 143, .2); margin: 8px 14px; }
+    th { background: rgba(10, 16, 13, .98); }
+    td { border-bottom: 1px solid rgba(255, 255, 255, .05); }
+    tbody tr:hover td { background: rgba(75, 224, 143, .06); }
+    .empty::before { content: none; }
+    footer { padding: 7px 14px; border-top: 1px solid var(--line); }
+    .toast { border-radius: 999px; padding: 8px 16px; background: rgba(10, 16, 13, .95); }
+    .toast::before { content: none; }
+    details.exp { padding: 6px 14px 0; }
+    details.exp > summary { cursor: pointer; color: var(--dim); list-style: none; display: inline-block; padding: 3px 10px;
+      border: 1px solid var(--line); border-radius: 999px; }
+    details.exp > summary::-webkit-details-marker { display: none; }
+    details.exp[open] > summary { color: var(--fg); }
+    details.exp .actions { padding: 8px 0 2px; }
+    .wmtabs button, .wcats button, .wmgroups button, .lvtabs button {
+      padding: 4px 10px; margin: 2px 3px 2px 0; border: 1px solid var(--line); border-radius: 999px; background: var(--bg2); color: var(--dim);
+      text-decoration: none;
+    }
+    .wmtabs button:hover, .wcats button:hover, .wmgroups button:hover { color: var(--fg); border-color: rgba(75, 224, 143, .45); }
+    .wmtabs button[aria-selected="true"], .wcats button[aria-selected="true"], .wmgroups button[aria-selected="true"], .wcats button.on, .wmgroups button.on {
+      background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .5); color: #fff; text-decoration: none;
+    }
+    .wg h4, .wmview h4 { font-size: 13px; }
+    /* boas-vindas em cima do chat: brilho leve */
+    .welcome {
+      position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 8px); pointer-events: none; text-align: center;
+      max-width: calc(100vw - 32px); width: max-content;
+      padding: 7px 16px; border-radius: 999px; background: rgba(4, 12, 7, .78); border: 1px solid rgba(75, 224, 143, .35);
+      color: #9cf5c2; font: 600 13px "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; letter-spacing: .6px;
+      text-shadow: 0 0 3px rgba(75, 224, 143, .45); opacity: 0; transition: opacity .6s, transform .6s;
+      animation: welcomeGlow 2.8s ease-in-out infinite;
+    }
+    .welcome.show { opacity: 1; transform: translate(-50%, 0); }
+    .welcome .cur { animation: blink 1s steps(1) infinite; color: var(--hi); }
+    @keyframes welcomeGlow {
+      0%, 100% { text-shadow: 0 0 3px rgba(75, 224, 143, .35); box-shadow: 0 0 8px rgba(75, 224, 143, .10); }
+      50% { text-shadow: 0 0 7px rgba(75, 224, 143, .6); box-shadow: 0 0 14px rgba(75, 224, 143, .22); }
+    }
   `;
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5603,28 +5725,31 @@
         </div>
         <div class="status"></div>
         <div class="wmprompt" hidden></div>
-        <div class="actions">
-          <button class="primary" data-a="json">Baixar JSON</button>
-          <button data-a="csv">Baixar CSV</button>
-          <button data-a="text">Copiar tudo (texto)</button>
-          <button data-a="shop">Copiar lista de compras</button>
-          <button data-a="map">Copiar floor</button>
-          <button data-a="furnidata">Carregar furnidata…</button>
-        </div>
+        <details class="exp"><summary>⇩ exportar este quarto</summary>
+          <div class="actions">
+            <button class="primary" data-a="json">Baixar JSON</button>
+            <button data-a="csv">Baixar CSV</button>
+            <button data-a="text">Copiar tudo (texto)</button>
+            <button data-a="shop">Copiar lista de compras</button>
+            <button data-a="map">Copiar floor</button>
+            <button data-a="furnidata">Carregar furnidata…</button>
+          </div>
+        </details>
         <div class="row2">
           <div class="tabs">
-            <button data-t="floor" aria-selected="true">Chão</button>
-            <button data-t="wall">Parede</button>
-            <button data-t="shop">Compras</button>
-            <button data-t="cat">Catálogo</button>
-            <button data-t="map">Floor</button>
-            <button data-t="level">Piso</button>
-            <button data-t="claude">Claude</button>
-            <button data-t="ceo" class="tab-ceo" hidden>ceo</button>
-            <button data-t="build">Construções</button>
-            <button data-t="wired">Wired</button>
-            <button data-t="obras">Anticópia</button>
-            <button data-t="paste" class="tab-paste">Colar no meu quarto</button>
+            <button data-t="floor" aria-selected="true">📦 Mobis</button>
+            <button data-t="paste" class="tab-paste">🏠 Colar no meu quarto</button>
+            <button data-t="wired">⚡ Wired</button>
+            <button data-t="build">🧱 Construções</button>
+            <button data-t="level">🟫 Piso</button>
+            <button class="more" type="button">mais ▸</button>
+            <button data-t="cat" class="t2">🛒 Catálogo</button>
+            <button data-t="shop" class="t2">🧾 Compras</button>
+            <button data-t="wall" class="t2">🖼 Parede</button>
+            <button data-t="map" class="t2">🗺 Floor</button>
+            <button data-t="claude" class="t2">🤖 Claude</button>
+            <button data-t="obras" class="t2">🛡 Anticópia</button>
+            <button data-t="ceo" class="tab-ceo t2" hidden>ceo</button>
           </div>
           <input class="filter" placeholder="Filtrar por nome…" spellcheck="false">
         </div>
@@ -5766,7 +5891,8 @@
             <textarea spellcheck="false" placeholder="Cole aqui o texto"></textarea>
             <button data-a="useText">Usar este texto</button>
           </details>
-          <div class="opts">
+          <details class="exp"><summary>⚙ opções da colagem</summary>
+          <div class="opts" style="padding-left:0;padding-right:0">
             <label>Deslocar x <input type="number" data-o="dx" value="0"></label>
             <label>y <input type="number" data-o="dy" value="0"></label>
             <label>Pausa entre mobis (ms) <input type="number" data-o="delay" value="350" min="100" step="50"></label>
@@ -5781,6 +5907,7 @@
             </select></label>
             <label class="chk"><input type="checkbox" data-o="group" checked> Colocar mobis iguais em sequência</label>
           </div>
+          </details>
           <div class="height">
             <div class="hstatus"></div>
             <div class="actions">
@@ -5989,6 +6116,12 @@
         renderLevel();
         return;
       }
+      const more = e.target.closest('.tabs .more');
+      if (more) {
+        const open = more.parentElement.classList.toggle('open');
+        more.textContent = open ? 'menos ◂' : 'mais ▸';
+        return;
+      }
       const tabBtn = e.target.closest('[data-t]');
       if (tabBtn) {
         ui.tab = tabBtn.dataset.t;
@@ -6001,6 +6134,7 @@
     });
 
     makeDraggable(ui.panel, $('header'));
+    setTimeout(showWelcome, 0); // se o nick já chegou antes do painel
     if (S.log.length) $('.log').textContent = S.log.join('\n');
     syncHeightInputs();
     render();
@@ -8563,7 +8697,12 @@
     ui.root.querySelector('[data-t="ceo"]').hidden = AUTH.role !== 'ceo';
     if (AUTH.role !== 'ceo' && ui.tab === 'ceo') ui.tab = 'floor';
     ui.root.querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.t === ui.tab)));
-    for (const sel of ['.panel > .status', '.panel > .actions', '.panel > .row2']) ui.root.querySelector(sel).hidden = !logged;
+    const sel2 = ui.root.querySelector(`.tabs [data-t="${ui.tab}"]`);
+    if (sel2 && sel2.classList.contains('t2') && !ui.root.querySelector('.tabs').classList.contains('open')) {
+      ui.root.querySelector('.tabs').classList.add('open'); // a aba aberta é uma das de "mais": mostra a lista
+      ui.root.querySelector('.tabs .more').textContent = 'menos ◂';
+    }
+    for (const sel of ['.panel > .status', '.panel > .exp', '.panel > .row2']) ui.root.querySelector(sel).hidden = !logged;
     ui.root.querySelector('.login').hidden = logged;
     if (!logged) {
       for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview']) ui.root.querySelector(sel).hidden = true;
