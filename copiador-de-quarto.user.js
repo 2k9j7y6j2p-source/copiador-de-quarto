@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.34
+// @version      3.0.35
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.34';
+  const VERSION = '3.0.35';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -6140,6 +6140,13 @@
               <div class="cncompra dim" style="padding-top:4px"></div>
             </div>
             <div class="cncard">
+              <div class="verdinho"><b>▦ Preencher área / linha de mobis</b> <span class="dim">(o mesmo mobi em linha reta, no mesmo :up)</span></div>
+              <div class="cnrow"><button data-a="cnAreaSel">📐 selecionar área</button>
+                <button data-a="cnAreaLimpa">cancelar</button>
+                <button data-a="cnAreaPara" hidden>⏹ parar</button></div>
+              <div class="cnareast dim"></div>
+            </div>
+            <div class="cncard">
               <div class="verdinho"><b>⬆ Altura</b> <span class="dim">(:up · de −25 a 63)</span></div>
               <div class="cnrow"><button data-a="cnUpMenos" title="diminuir">▼</button>
                 <input type="number" data-o="cnUp" value="0" step="0.5" min="-25" max="63">
@@ -6166,13 +6173,6 @@
                 <button data-a="cnSpMais" title="aumentar">▲</button>
                 <button data-a="cnSpDesliga">desligar</button></div>
               <div class="cnspst dim"></div>
-            </div>
-            <div class="cncard">
-              <div class="verdinho"><b>▦ Preencher área</b> <span class="dim">(o mesmo mobi em linha reta, no mesmo :up)</span></div>
-              <div class="cnrow"><button data-a="cnAreaSel">📐 selecionar área</button>
-                <button data-a="cnAreaLimpa">cancelar</button>
-                <button data-a="cnAreaPara" hidden>⏹ parar</button></div>
-              <div class="cnareast dim"></div>
             </div>
             <div class="cncard">
               <div class="verdinho"><b>⚡ Atalhos</b></div>
