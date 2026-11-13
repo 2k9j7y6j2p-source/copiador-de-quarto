@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.36
+// @version      3.0.37
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -1179,6 +1179,7 @@
   function watch(ws) {
     S.stats.sockets++;
     S.up = { mode: 'off', z: null, seen: S.up.seen, wantOff: 0 }; // conexão nova: o :up do jogo começa desligado
+    Object.assign(ST, { v: null, toque: false, desligou: null, falhasDesligar: 0 }); // e o :state também
     S.ws = ws;
     const st = { ws, buf: new Uint8Array(0), chain: Promise.resolve() };
     const nativeSend = ws.send;
@@ -1677,6 +1678,7 @@
       reuseRoom: true,       // usar mobis que já estão no quarto antes de comprar
       keepPlaced: true,      // não mexer (nem dar :up) nos mobis que já estão no lugar: ex. continuar depois de cair
       matchStates: true,     // usar os mobis (luminárias de vários tamanhos, por exemplo) até ficarem no estado da cópia
+      stateCmd: true,        // Habblet: :state ligado no estado da cópia enquanto entram os mobis (o Usar fica só para o que sobrar)
       forceUp: false,        // :up em todos os mobis (nenhum "direto no chão"): colar e Construções usam sempre
       useDelay: 450,         // pausa entre um "usar" e outro
       maxUses: 12,           // no máximo quantas vezes usar o mesmo mobi
@@ -2824,6 +2826,25 @@
       if (far) ctx.log(`– ${pl(far, 'mobi fica', 'mobis ficam')} em alturas que o :up do jogo não alcança (${UP_MIN} a ${UP_MAX}): vou ignorar.`);
     }
 
+    // Estado: o :state do Habblet fica ligado no estado da cópia enquanto entram os mobis desse estado.
+    const usaEstado = !!ctx.matchStates && ctx.stateCmd !== false && isHabblet();
+    ST.funciona = null; ST.toque = false; ST.comandos = 0; ST.falhasDesligar = 0;
+    if (usaEstado) {
+      const floor = order.filter((t) => t.kind === 'floor');
+      const rest = order.filter((t) => t.kind !== 'floor');
+      const precisa = floor.filter((t) => chaveEstado(t));
+      if (precisa.length) {
+        if (ctx.adjustHeight) {
+          const a = orderByState(floor.filter((t) => t.natural), chaveEstado, ST.v ?? '');
+          const fim = a.length ? chaveEstado(a[a.length - 1]) : ST.v ?? '';
+          order = [...a, ...orderByState(floor.filter((t) => !t.natural), chaveEstado, fim, (x, y) => Math.abs(x.z - y.z) <= Z_TOL), ...rest];
+        } else order = [...orderByState(floor, chaveEstado, ST.v ?? ''), ...rest];
+        const nEst = new Set(precisa.map(chaveEstado)).size;
+        ctx.log(`Estado: ${pl(precisa.length, 'mobi entra', 'mobis entram')} já no estado da cópia com o “:state” ligado ` +
+          `(${pl(nEst, 'estado', 'estados')}; os do mesmo estado vão juntos, sem usar o mobi várias vezes).`);
+      }
+    }
+
     const where = (t) => (t.kind === 'floor' ? `x=${t.x} y=${t.y}` : t.location || 'parede');
     const pick = (list, t) => { const i = list.findIndex((o) => o.state === t.state); return i < 0 ? 0 : i; };
 
@@ -2846,6 +2867,7 @@
         const item = items[idx];
         const addKind = t.kind === 'floor' ? 'floorAdd' : 'wallAdd';
         const cmd = t.kind === 'floor' ? `${item.id} ${t.x} ${t.y} ${t.rot}` : `${item.id} ${t.location}`;
+        if (usaEstado && t.kind === 'floor' && ST.funciona !== false) await setPlaceState(estadoParaColocar(t, item), ctx);
         const p = waitFor([addKind, 'notification'],
           (k, d) => (k === 'notification' ? /placement/i.test(d.type) : d.id === item.id || d.id === item.ref),
           ctx.placeTimeout);
@@ -2855,6 +2877,7 @@
           items.splice(idx, 1);
           res.ok++;
           if (r.data.ownerId > 0) setMe(r.data.ownerId, r.data.owner); // o mobi saiu do SEU inventário
+          if (usaEstado && t.kind === 'floor') { t.placedId = r.data.id; await confereEstado(t, item, r.data, ctx); }
           return { placed: r.data };
         }
         if (!r) { // sem resposta: o hotel pode colocar depois. Esse mobi fica de lado um tempo.
@@ -3010,7 +3033,12 @@
       }
     }
 
+    // O :state ligado pela colagem desliga antes do Usar (e antes de qualquer mobi colocado na mão).
+    if (ST.toque && ST.v != null && connected()) { try { await setPlaceState(null, ctx); } catch (_) { /* desligo no fim */ } }
+    if (ST.comandos) ctx.log(`Comandos de estado (:state) enviados: ${ST.comandos}` + (ST.funciona === false ? ' (o :state não funcionou aqui)' : ''));
+
     // Estados: mobis que mudam ao "usar" (luminárias de vários tamanhos/cores) ficam no estado da cópia.
+    // Com o :state funcionando, aqui só sobram os que o hotel não deixou entrar no estado (ou que vieram do quarto).
     if (ctx.matchStates && !mutedStop && !ctx.aborted() && connected()) {
       const todo = [];
       for (const t of plan.targets) {
@@ -3525,7 +3553,9 @@
   // O número do :up para um mobi: a altura final (ou a altura acima do piso, se o hotel contar assim).
   const placeValue = (t) => round(macro().placeRel ? t.z - tileHeight(S.room.heightmap, t.x, t.y) : t.z);
   // Desliga o modo de altura no fim (ou se a tarefa parar no meio), só se o script mexeu nele.
-  function placeModeOff() {
+  // O :state também (ver stateModeOff): vai depois do :up, com a pausa do anti-flood.
+  function placeModeOff() { upModeOff(); stateModeOff(); }
+  function upModeOff() {
     const st = S.sticky;
     if (!st || !connected()) return;
     if (upKnown() ? !st.touched || S.up.mode === 'off' : st.placeZ == null) return;
@@ -3533,6 +3563,147 @@
     S.up.wantOff = Date.now(); // se o hotel ligar o modo de teste, desligo de novo
     st.placeZ = null;
     lastCommandAt = Date.now();
+  }
+
+  // ---- :state do Habblet na colagem. Ligado, os próximos mobis colocados já entram nesse estado.
+  // Pedido dela: quando o script sabe o estado do mobi, deixa o :state ligado em vez de usar o mobi várias vezes.
+  // Mobis do mesmo estado vão um depois do outro (um comando por estado). Não sei o texto que o hotel responde:
+  // quem confirma é o próprio mobi que entra (veio no estado ou não). Se não funcionar, desligo e uso o mobi no fim.
+  const ST = { v: null, toque: false, funciona: null, desligou: null, falhasDesligar: 0, mostrouResposta: false, comandos: 0 };
+  const estadoNum = (s) => (s == null || s === '' ? '0' : String(s));
+  // O estado que o :state pode dar a este mobi da cópia (null = nenhum: wired, dados, jogos, texto…)
+  function estadoDoAlvo(t) {
+    if (t.kind !== 'floor') return null;
+    const want = estadoNum(t.state);
+    if (!/^\d{1,2}$/.test(want)) return null;
+    if (NO_USE.test(t.classname || classnameOf('floor', t.spriteId) || '')) return null;
+    const known = statesOf(t.spriteId);
+    if (known && known.n && +want >= known.n) return null; // esse estado não existe nesse mobi
+    return want;
+  }
+  // Para a ordem: o estado que precisa do :state ligado ('' = nenhum; quem sai da loja já vem no 0)
+  const chaveEstado = (t) => { const e = t.existing == null ? estadoDoAlvo(t) : null; return e && e !== '0' ? e : ''; };
+  // O :state para colocar este item do inventário: o estado da cópia, ou desligado (entra como está no inventário).
+  function estadoParaColocar(t, item) {
+    const want = estadoDoAlvo(t);
+    if (want == null) return null;
+    if (ST.v === want) return want;                             // já está ligado nele: não troca
+    return estadoNum(item.state) !== want ? want : null;
+  }
+  // Mobis do mesmo estado um depois do outro, sem passar um mobi na frente do que fica embaixo dele.
+  // mesmaLeva(a, b): só junta dentro da mesma leva (com :up, a mesma altura, para não mandar mais :up).
+  function orderByState(list, chave, inicio, mesmaLeva) {
+    if (!list.some((t) => chave(t))) return list;
+    const tiles = new Map();
+    const below = list.map(() => []);
+    list.forEach((t, i) => {
+      if (t.kind !== 'floor') return;
+      for (const [x, y] of footprintOf(t.spriteId, t.x, t.y, t.rot)) {
+        const k = x + ',' + y;
+        if (!tiles.has(k)) tiles.set(k, []);
+        for (const j of tiles.get(k)) if (list[j].z < t.z - Z_TOL) below[i].push(j);
+        tiles.get(k).push(i);
+      }
+    });
+    const done = new Uint8Array(list.length);
+    const out = [];
+    let cur = inicio, first = 0;
+    while (out.length < list.length) {
+      while (done[first]) first++;
+      let pick = first; // o primeiro que falta sempre pode (o que fica embaixo dele vem antes na lista)
+      if (chave(list[first]) !== cur) {
+        for (let i = first + 1; i < list.length; i++) {
+          if (mesmaLeva && !mesmaLeva(list[i], list[first])) break;
+          if (!done[i] && chave(list[i]) === cur && below[i].every((j) => done[j])) { pick = i; break; }
+        }
+      }
+      done[pick] = 1;
+      out.push(list[pick]);
+      cur = chave(list[pick]);
+    }
+    return out;
+  }
+  // A janela do Ajudante mostra o :state que ficou ligado no jogo.
+  function cnEstadoMostra() {
+    try {
+      CN.ligado.st = ST.v != null;
+      CN.enviado.st = ST.v != null ? `:state ${ST.v}` : ':state (desligar)';
+      if (ST.v != null) CN.st = +ST.v;
+      renderCn();
+    } catch (_) { /* janela ainda não existe */ }
+  }
+  // Deixa o :state em v (null = desligado) para os próximos mobis colocados.
+  async function setPlaceState(v, ctx) {
+    v = v ?? null;
+    if (ST.v === v) return;
+    const text = v == null ? ':state' : `:state ${v}`;
+    for (let tries = 0; tries < 3; tries++) {
+      const mute = S.mutedUntil - Date.now();
+      if (mute > 0) {
+        ctx.log(`… você está mudo por ${Math.ceil(mute / 1000)}s (anti-flood do hotel): espero para mandar “${text}”`);
+        await sleep(mute + 700);
+      }
+      if (ctx.aborted() || !connected()) return;
+      const wait = lastCommandAt + ctx.commandDelay - Date.now();
+      if (wait > 0) await sleep(wait);
+      const reply = waitFor(['whisper', 'flood'], (k, d) => k === 'flood' ||
+        ((S.floorObs.me == null || d.index === S.floorObs.me) && !parseUp(d.text)), Math.max(1200, ctx.commandDelay * 2));
+      send(OUT.CHAT, (w) => w.str(text).int(0));
+      lastCommandAt = Date.now();
+      ST.toque = true;
+      ST.comandos = (ST.comandos || 0) + 1;
+      const r = await reply;
+      if (r && r.kind === 'flood') {
+        ctx.commandDelay = Math.min(5000, Math.max(1200, ctx.commandDelay * 2));
+        ctx.log(`… o hotel deixou você mudo (anti-flood): mando o “${text}” de novo quando passar`);
+        continue;
+      }
+      if (r && !ST.mostrouResposta) { ST.mostrouResposta = true; ctx.log(`Estado: o hotel respondeu ao “${text}”: “${r.data.text}”`); }
+      break;
+    }
+    if (v == null) ST.desligou = ST.v; // confiro no próximo mobi colocado se desligou mesmo
+    ST.v = v;
+    cnEstadoMostra();
+  }
+  // Confere no mobi que acabou de entrar se o :state fez efeito.
+  async function confereEstado(t, item, placed, ctx) {
+    const veio = estadoNum(placed.state);
+    if (ST.v != null) {
+      if (veio === ST.v) {
+        if (!ST.funciona) { ST.funciona = true; ctx.log(`✓ Estado: o “:state ${ST.v}” funciona; os mobis já entram no estado da cópia.`); }
+        return;
+      }
+      if (ST.funciona) return; // já funcionou antes: é esse mobi que não aceita esse estado (o Usar tenta no fim)
+      ST.funciona = false;
+      ctx.log(`Estado: o “:state ${ST.v}” não mudou o estado do mobi (veio ${veio}). Desligo e, no fim, acerto usando o mobi, como antes.`);
+      await setPlaceState(null, ctx);
+      return;
+    }
+    if (ST.desligou == null) return;
+    const antes = ST.desligou;
+    if (veio !== antes) { ST.desligou = null; ST.falhasDesligar = 0; return; } // desligou
+    if (estadoNum(item.state) === antes) return; // o item já estava nesse estado: ainda não dá para saber
+    if (++ST.falhasDesligar >= 2) {
+      throw Object.assign(new Error('o “:state” não desligou no jogo. Parei para não colocar os mobis no estado errado'), { muted: true });
+    }
+    ctx.log(`Estado: o “:state” não desligou (o mobi veio ${veio}); mando de novo.`);
+    ST.v = antes;
+    await setPlaceState(null, ctx);
+  }
+  // Desliga o :state no fim (ou se a tarefa parar no meio), só se a colagem mexeu nele.
+  function stateModeOff() {
+    if (!ST.toque || ST.v == null) return;
+    ST.toque = false;
+    const manda = () => {
+      if (!connected() || ST.v == null) return;
+      try { send(OUT.CHAT, (w) => w.str(':state').int(0)); } catch (_) { return; }
+      lastCommandAt = Date.now();
+      ST.desligou = ST.v;
+      ST.v = null;
+      cnEstadoMostra();
+    };
+    const espera = lastCommandAt + 900 - Date.now();
+    if (espera > 0) setTimeout(manda, espera + 50); else manda();
   }
 
   function reportHeights(ctx) {
@@ -6086,7 +6257,7 @@
             <label>y <input type="number" data-o="dy" value="0"></label>
             <label>Pausa entre mobis (ms) <input type="number" data-o="delay" value="350" min="100" step="50"></label>
             <label class="chk"><input type="checkbox" data-o="reuse" checked> Reaproveitar mobis que já estão no quarto</label>
-            <label class="chk"><input type="checkbox" data-o="matchStates" checked> Acertar o estado dos mobis (luminárias: clico em Usar até ficarem do tamanho/cor da cópia)</label>
+            <label class="chk"><input type="checkbox" data-o="matchStates" checked> Acertar o estado dos mobis (ligo o :state no estado da cópia enquanto entram; se não der, clico em Usar)</label>
             <label class="chk"><input type="checkbox" data-o="keepPlaced" checked> Não mexer nos mobis que já estão no lugar (sem :up neles; para continuar depois de cair)</label>
             <label class="chk"><input type="checkbox" data-o="chatBlock" checked> Bloquear o chat do quarto enquanto monto (para não ser mutado; o console continua)</label>
             <label>Comprar o que faltar <select data-o="buyMode">
@@ -8514,6 +8685,7 @@
     lastCommandAt = Date.now();
     CN.enviado[tipo] = cmd;
     CN.ligado[tipo] = true;
+    if (tipo === 'st') { ST.v = cnFmt(CN.st); ST.toque = false; } // a colagem sabe que ficou ligado
     if (!CNC.carregado) cncCarrega();
     renderCn();
   }
@@ -8542,6 +8714,7 @@
     }
     send(OUT.CHAT, (w) => w.str(cnCmd(tipo)).int(0));
     lastCommandAt = Date.now();
+    if (tipo === 'st') ST.v = null;
     CN.enviado[tipo] = `${cnCmd(tipo)} (desligar)`;
     renderCn();
   }
