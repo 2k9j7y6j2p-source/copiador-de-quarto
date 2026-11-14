@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.40
+// @version      3.0.41
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.40';
+  const VERSION = '3.0.41';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -1195,6 +1195,11 @@
         let walk = null, chat = null;
         try { walk = walkOf(data); chat = walk ? null : chatOf(data); } catch (_) { /* ignorado */ }
         // Montando wired: o clique escolhe o quadrado / o mobi e o boneco não anda.
+        // Autoclick: o clique escolhe o mobi e o boneco não anda.
+        if (AC.pick && S.room.id != null) {
+          const tap = walk || tapOf(data);
+          if (tap) { try { acTap(tap); } catch (e) { console.warn(TAG, e); } return undefined; }
+        }
         if ((WM.step === 'tile' || WM.step === 'role') && S.room.id != null) {
           const tap = walk || tapOf(data);
           if (tap) { try { wmTap(tap.x, tap.y, tap.id); } catch (e) { console.warn(TAG, e); } return undefined; }
@@ -1220,6 +1225,8 @@
         }
         // "MARCADOR 7" no chat: não vai para o hotel, ensina a altura.
         if (MARKERS_ON && chat && markerChat(chat)) return undefined;
+        // "ia: ..." no chat do jogo: vai para o chat IA, não para o quarto.
+        if (chat && IA_PREFIXO.test(chat)) { iaEnviar(chat.replace(IA_PREFIXO, '')).catch((e) => console.warn(TAG, e)); return undefined; }
         // Montando: o que você digita no chat do quarto não vai (o console passa).
         if (!walk && chatBlocked() && roomChatOf(data)) { chatBlockedNotice(); return undefined; }
       }
@@ -5646,6 +5653,8 @@
           get previews() { return S.lajPrev; } },
         construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, lote: (n) => cncLote(n), area: { seleciona: () => cnaSeleciona(), limpa: () => cnaLimpa(), parar: () => { CNA.parar = true; }, get state() { return CNA; } }, get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
+        ia: { le: iaLe, executa: (acoes) => { const m = iaMsg('ia', 'teste'); iaExecuta(acoes, m); return m; }, botao: iaBotao, texto: iaTexto, parar: () => acPara('teste'),
+          get autoclick() { return AC; }, get hist() { return IA.hist; } },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
           get copied() { return S.wcopy; } },
@@ -6002,6 +6011,24 @@
     .cnpanel .pergout { max-height: 260px; overflow: auto; }
     .cnview.desligado .cncard.cnperg { opacity: 1; } /* a pergunta funciona com o modo construtor desligado */
     .fab { touch-action: none; user-select: none; }
+    /* Chat IA: barra ao lado do chat do jogo e a conversa em cima dela */
+    .iabar { position: fixed; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 8px; pointer-events: auto;
+      background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, .35); border: 2px solid rgba(75, 224, 143, .7); box-sizing: border-box; }
+    .iabar[hidden] { display: none !important; }
+    .iaico { cursor: move; font-size: 17px; user-select: none; touch-action: none; }
+    .iain { flex: 1; min-width: 60px; border: 0 !important; outline: none; background: transparent !important; color: #222 !important; font-size: 14px; padding: 0 !important; }
+    .iain::placeholder { color: #888; }
+    .iago { border: 0; border-radius: 6px; background: #2fbf71; color: #fff; font-size: 13px; padding: 4px 10px; cursor: pointer; }
+    .iago:hover { background: #26a35f; }
+    .panel.iapanel { top: auto; width: min(380px, calc(100vw - 24px)); max-height: min(60vh, 520px); }
+    .iamsgs { overflow: auto; padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+    .iam { padding: 6px 9px; border-radius: 10px; line-height: 1.45; max-width: 92%; word-wrap: break-word; }
+    .iam.eu { align-self: flex-end; background: rgba(75, 224, 143, .16); border: 1px solid rgba(75, 224, 143, .35); }
+    .iam.ia { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
+    .iam .nota { color: var(--dim); font-size: 11.5px; margin-top: 3px; }
+    .iam .acts { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+    .iam .acts button { padding: 3px 9px; border: 1px solid rgba(75, 224, 143, .5); border-radius: 6px; background: rgba(75, 224, 143, .12); color: var(--fg); cursor: pointer; }
+    .iast { border-bottom: 1px solid var(--line); }
     .cnpanel .cnview { border-top: 0; padding-bottom: 12px; }
     .cncard { margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
     .cnrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 4px; }
@@ -6389,6 +6416,17 @@
             </div>
           </div>
       </div>
+      <div class="iabar" hidden>
+        <span class="iaico" title="Chat IA: clique para abrir a conversa · arraste para mudar de lugar · clique duplo: volta para o lado do chat">🤖</span>
+        <input class="iain" placeholder="IA: traduzir, autoclick, dúvidas…" spellcheck="false" maxlength="500">
+        <button class="iago" data-a="iaEnviar" title="mandar para a IA">➤</button>
+      </div>
+      <div class="panel iapanel" hidden>
+        <header class="iahead" title="arraste para mover · clique duplo: volta para cima do chat"><span class="hd">🤖 Chat IA</span><span class="sp"></span>
+          <button class="x" data-a="iaLimpar" title="apagar a conversa">[limpar]</button><button class="x" data-a="iaFechar" title="Fechar">[x]</button></header>
+        <div class="iast lvpad" hidden></div>
+        <div class="iamsgs"></div>
+      </div>
       <input type="file" class="file" accept=".json,.txt,application/json,text/plain" hidden>
       <div class="toast"></div>`;
     document.documentElement.appendChild(host);
@@ -6628,6 +6666,23 @@
     makeDraggable(ui.fab, ui.fab, 'b-copiador', true);
     makeDraggable(ui.fabcn, ui.fabcn, 'b-ajudante', true);
     makeDraggable(ui.fabw, ui.fabw, 'b-wired', true);
+    ui.iabar = $('.iabar'); ui.iapanel = $('.iapanel'); ui.iain = $('.iain');
+    for (const el of [ui.iabar, ui.iapanel]) for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, (e) => e.stopPropagation());
+    ui.iain.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); iaEnviar(ui.iain.value); } });
+    makeDraggable(ui.iabar, $('.iaico'), 'iabar', true);
+    makeDraggable(ui.iapanel, $('.iahead'), 'iachat');
+    $('.iaico').addEventListener('click', () => {
+      if (ui.iabar.__arrastou) { ui.iabar.__arrastou = false; return; }
+      if (ui.iapanel.hidden) iaAbre(); else ui.iapanel.hidden = true;
+    });
+    $('.iaico').addEventListener('dblclick', () => { // volta para o lado do chat
+      delete POS.iabar; store.set(POS_KEY, POS);
+      for (const k of ['left', 'top', 'right', 'bottom']) ui.iabar.style[k] = '';
+      delete ui.iabar.dataset.movido;
+      iaSegue();
+    });
+    $('.iahead').addEventListener('dblclick', () => { delete ui.iapanel.dataset.movido; iaPosPainel(); });
+    iaSegue();
     setTimeout(showWelcome, 0); // se o nick já chegou antes do painel
     vigiaAmigos();
     if (S.log.length) root.querySelectorAll('.log').forEach((pre) => { pre.textContent = S.log.join('\n'); });
@@ -6784,10 +6839,10 @@
   }
 
   // Conta só de wired: ler, copiar e colar wired (wm…), aprender (apr…) e as categorias do guia.
-  const SO_WIRED_OK = (a) => /^(wm|apr|cn)/.test(a) || ['wcat', 'close', 'stop', 'diag'].includes(a);
+  const SO_WIRED_OK = (a) => /^(wm|apr|cn|ia)/.test(a) || ['wcat', 'close', 'stop', 'diag'].includes(a);
   async function action(a, el) {
     if (S.nivel === 'wired' && !SO_WIRED_OK(a)) { toast(`Acesso negado: sua conta tem só os wired (ler, copiar e colar). ${CONTATO}`, true, 5000); return; }
-    if (S.nivel === 'construcao' && !/^cn/.test(a)) { toast(`Acesso negado: sua conta tem só o Ajudante de construção. ${CONTATO}`, true, 5000); return; }
+    if (S.nivel === 'construcao' && !/^(cn|ia)/.test(a)) { toast(`Acesso negado: sua conta tem só o Ajudante de construção. ${CONTATO}`, true, 5000); return; }
     const $ = (sel) => ui.root.querySelector(sel);
     const fail = (e) => { S.authMsg = `<span class="bad">✗ ${esc(e.message)}</span>`; };
     if (a === 'loginUser') {
@@ -6866,6 +6921,11 @@
     }
     if (a === 'wmSub') { ui.wsub = el.dataset.s; renderW(); return; }
     if (a === 'wmFechar') { ui.wpanel.hidden = true; return; }
+    if (a === 'iaEnviar') { iaEnviar(ui.iain ? ui.iain.value : ''); return; }
+    if (a === 'iaFechar') { ui.iapanel.hidden = true; return; }
+    if (a === 'iaLimpar') { IA.hist = []; store.set(IA_KEY, []); renderIa(); return; }
+    if (a === 'iaParar') { acPara('você mandou parar'); return; }
+    if (a === 'iaAcao') { iaBotao(+el.dataset.m, +el.dataset.i); return; }
     if (a === 'wmPergunta' || a === 'cnPergunta') {
       const box = el.closest('.wperg, .cncard');
       const txt = box && box.querySelector('[data-o="pergTxt"]');
@@ -8773,12 +8833,12 @@
     : tipo === 'sp' ? Math.max(0, Math.min(SPIN_MAX, Math.round(v / 2) * 2)) : Math.max(0, Math.min(99, Math.round(v))));
   const cnChave = (tipo) => (tipo === 'up' ? 'up' : tipo === 'sp' ? 'sp' : 'st');
   const cnCmd = (tipo) => (tipo === 'up' ? ':up' : tipo === 'sp' ? ':spin' : ':state');
-  function cnManda(tipo) {
+  function cnManda(tipo, forca) { // forca: pedido do chat IA, vale com o modo construtor desligado
     clearTimeout(CN.timer[tipo]);
-    if (!CN.modo) { toast('Ligue o modo construtor primeiro', true); return; }
+    if (!CN.modo && !forca) { toast('Ligue o modo construtor primeiro', true); return; }
     if (!connected()) { toast('Sem conexão com o jogo', true); return; }
     const espera = Math.max(lastCommandAt + 900, S.mutedUntil || 0) - Date.now();
-    if (espera > 0) { CN.timer[tipo] = setTimeout(() => cnManda(tipo), espera + 50); return; }
+    if (espera > 0) { CN.timer[tipo] = setTimeout(() => cnManda(tipo, forca), espera + 50); return; }
     const cmd = `${cnCmd(tipo)} ${cnFmt(CN[cnChave(tipo)])}`;
     send(OUT.CHAT, (w) => w.str(cmd).int(0));
     lastCommandAt = Date.now();
@@ -9077,17 +9137,17 @@
   }
   const SEM_AJUDANTE = 'Instale o ajudante “Copiador de Quarto – Claude” no Tampermonkey (link no README do GitHub) e recarregue o hotel';
   async function apiPronto() {
-    if (!API.pronto) { W.document.dispatchEvent(new W.CustomEvent('copiador-claude:ola')); await sleep(700); }
+    if (!API.pronto && W.document && W.CustomEvent) { W.document.dispatchEvent(new W.CustomEvent('copiador-claude:ola')); await sleep(700); }
     return API.pronto;
   }
   // Manda um pedido para o ajudante e espera a resposta ({ok, texto} ou {ok:false, erro}).
-  function apiPedir(pedido, sistema, texto) {
+  function apiPedir(pedido, sistema, texto, modo) {
     const id = `p${Date.now()}-${++API.n}`;
     const resp = new Promise((resolve) => {
       API.esperando.set(id, resolve);
       setTimeout(() => { if (API.esperando.delete(id)) resolve({ ok: false, erro: 'o ajudante não respondeu em 6 minutos' }); }, 360000);
     });
-    W.document.dispatchEvent(new W.CustomEvent('copiador-claude:pedido', { detail: JSON.stringify({ id, pedido, sistema, texto }) }));
+    W.document.dispatchEvent(new W.CustomEvent('copiador-claude:pedido', { detail: JSON.stringify({ id, pedido, sistema, texto, modo }) }));
     return resp;
   }
   async function wmAskApi() {
@@ -9173,13 +9233,13 @@
   async function perguntar(q) {
     q = String(q || '').trim();
     if (!q) { toast('Escreva a sua dúvida primeiro', true); return; }
-    if (PERG.run || API.run) { toast('Já tem uma pergunta indo para o Claude: espere a resposta'); return; }
+    if (PERG.run || API.run || IA.run) { toast('Já tem uma pergunta indo para o Claude: espere a resposta'); return; }
     if (!(await apiPronto())) { toast(SEM_AJUDANTE, true); return; }
     PERG.run = true;
     PERG.msg = 'confirme na janela do navegador e espere a resposta';
     renderPerg();
     try {
-      const r = await apiPedir(q, PERG_SISTEMA, pergTexto(q));
+      const r = await apiPedir(q, PERG_SISTEMA, pergTexto(q), 'chat');
       if (!r.ok) { if (r.erro !== 'cancelado') toast('Claude: ' + r.erro, true); return; }
       PERG.hist.unshift({ q, a: String(r.texto).trim(), t: Date.now() });
       PERG.hist = PERG.hist.slice(0, 8);
@@ -9191,6 +9251,263 @@
       renderPerg();
     }
   }
+  // 🤖 Chat IA (ao lado do chat do jogo): a pessoa pede (traduzir, autoclick, dúvidas, :up…) e o Claude responde
+  // com texto e ações. Vai pelo ajudante "Copiador de Quarto – Claude" (a chave fica nele).
+  const IA_KEY = 'copiadorDeQuarto.chatIA.v1';
+  const IA_PREFIXO = /^\s*!?ia\s*[:,]\s*/i;
+  const IA = { run: false, segueT: null, hist: (store.get(IA_KEY) || []).slice(-30).map((m) => ({ ...m, botoes: [] })) };
+  const IA_SISTEMA = 'Você é a IA do chat do plugin “Assistente de Construção” do Habblet (hotel virtual em pixel art, cliente Nitro). ' +
+    'A pessoa escreve no chat IA, ao lado do chat do jogo. Responda SEMPRE só com um JSON, sem nada fora dele: ' +
+    '{"texto":"resposta curta em português do Brasil","acoes":[]}. Ações (use só quando a pessoa pedir): ' +
+    '{"a":"falar","texto":"frase"} deixa um botão para a pessoa mandar a frase no chat do quarto (até 100 letras, nunca comandos com :); ' +
+    '{"a":"autoclick","vezes":N,"intervalo":segundos} clica (usa) um mobi N vezes, 0 = até mandar parar; a pessoa escolhe o mobi clicando nele; ' +
+    'intervalo mínimo 0.5 s; para sozinho depois de 30 minutos; {"a":"parar"} para o autoclick; ' +
+    '{"a":"up","valor":altura} liga o :up (−25 a 63) e {"a":"up","valor":null} desliga; o mesmo para "state" (0 a 99) e "spin" (0, 2, 4 ou 6); ' +
+    '{"a":"hidewired"} mostra ou esconde os wired; {"a":"abrir","janela":"wired"|"ajudante"|"copiador"} abre uma janela do plugin. ' +
+    'Traduzir: ponha a tradução no "texto" e, se a pessoa quiser falar no quarto, junte uma ação "falar" com a tradução. ' +
+    'Dúvidas: responda no "texto" (curto, passos numerados). Não invente ações, comandos nem wired. ' +
+    'Se pedirem algo que o plugin não faz, diga que não dá e sugira falar com vinipetter no Discord.';
+  function iaTexto(q) {
+    const L = ['# Chat IA do plugin', '', `A conta da pessoa tem: ${NIVEL_TXT[S.nivel] || NIVEL_TXT.total}.`,
+      `No jogo: ${connected() ? (S.room.id != null ? `no quarto ${S.room.id}` : 'fora de um quarto') : 'sem conexão'}.` +
+      (AC.on ? ` Autoclick ligado (${AC.feitos}${AC.vezes ? '/' + AC.vezes : ''} cliques).` : ''), '', ...PERG_MANUAL, ''];
+    if (PERG_WIRED.test(q) && S.nivel !== 'construcao') {
+      const G = WIRED_GUIDE;
+      L.push(...WM_REGRAS, '', 'Wired do Habblet (classname — tipo nome: o que faz · como usar):');
+      for (const [k, n, c, d, u] of G.itens) L.push(`${c} — ${k} ${n}: ${d} · ${u}`);
+      L.push('');
+    }
+    const antes = IA.hist.slice(0, -1).slice(-8);
+    if (antes.length) L.push('## Conversa até agora', ...antes.map((m) => `${m.de === 'eu' ? 'Pessoa' : 'IA'}: ${m.texto}`), '');
+    L.push('## Mensagem da pessoa', q);
+    return L.join('\n');
+  }
+  function iaLe(texto) {
+    const t = String(texto || '').trim();
+    const m = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const cand = [m && m[1], t, (t.match(/\{[\s\S]*\}/) || [])[0]].filter(Boolean);
+    for (const c of cand) {
+      try {
+        const j = JSON.parse(c);
+        if (j && typeof j === 'object') return { texto: String(j.texto || ''), acoes: Array.isArray(j.acoes) ? j.acoes.filter((a) => a && typeof a === 'object') : [] };
+      } catch (_) { /* tenta o próximo */ }
+    }
+    return { texto: t, acoes: [] };
+  }
+  function iaMsg(de, texto, extra) {
+    const m = { de, texto: String(texto || ''), t: Date.now(), notas: [], botoes: [], ...(extra || {}) };
+    IA.hist.push(m);
+    if (IA.hist.length > 30) IA.hist.splice(0, IA.hist.length - 30);
+    store.set(IA_KEY, IA.hist.map(({ de: d, texto: x, t, notas }) => ({ de: d, texto: x, t, notas })));
+    renderIa();
+    return m;
+  }
+  function iaNota(m, txt) {
+    if (!m) return;
+    m.notas.push(txt);
+    store.set(IA_KEY, IA.hist.map(({ de: d, texto: x, t, notas }) => ({ de: d, texto: x, t, notas })));
+    renderIa();
+  }
+  function iaComando(tipo, valor) {
+    if (!connected()) throw new Error('sem conexão com o jogo');
+    if (valor == null || valor === '' || valor === 'desligar') { cnDesliga(tipo, true); return `${cnCmd(tipo)} desligado`; }
+    const v = parseFloat(String(valor).replace(',', '.'));
+    if (!Number.isFinite(v)) throw new Error('valor inválido');
+    const k = cnChave(tipo);
+    CN[k] = cnLimite(tipo, v);
+    const inp = ui && ui.root.querySelector({ up: '[data-o="cnUp"]', sp: '[data-o="cnSp"]', st: '[data-o="cnSt"]' }[k]);
+    if (inp) inp.value = cnFmt(CN[k]);
+    cnManda(tipo, true);
+    return `${cnCmd(tipo)} ${cnFmt(CN[k])}`;
+  }
+  function iaExecuta(acoes, m) {
+    for (const a of acoes || []) {
+      const tipo = String(a.a || a.acao || '').toLowerCase();
+      try {
+        if (tipo === 'falar') {
+          const txt = String(a.texto || '').trim().slice(0, 100);
+          if (!txt) continue;
+          if (txt.startsWith(':')) { iaNota(m, '✗ comandos com “:” eu não mando pela IA'); continue; }
+          m.botoes.push({ rot: `💬 mandar no chat: “${txt}”`, a: 'falar', texto: txt });
+        } else if (tipo === 'autoclick') {
+          acPedirMobi(a.vezes, a.intervalo);
+          iaNota(m, `🖱 clique no mobi do jogo que eu devo clicar (${AC.vezes ? AC.vezes + ' vezes' : 'até você mandar parar'}, a cada ${cnFmt(AC.ms / 1000)} s)`);
+        } else if (tipo === 'parar') {
+          acPara('você pediu');
+        } else if (tipo === 'up' || tipo === 'state' || tipo === 'spin') {
+          iaNota(m, '✓ ' + iaComando(tipo === 'up' ? 'up' : tipo === 'spin' ? 'sp' : 'st', a.valor));
+        } else if (tipo === 'hidewired') {
+          if (!connected()) throw new Error('sem conexão com o jogo');
+          send(OUT.CHAT, (w) => w.str(':hidewired').int(0));
+          lastCommandAt = Date.now();
+          iaNota(m, '✓ :hidewired');
+        } else if (tipo === 'abrir') {
+          const j = String(a.janela || '');
+          const pode = j === 'copiador' ? S.nivel === 'total' : j === 'wired' ? S.nivel !== 'construcao' : j === 'ajudante';
+          if (!pode) { iaNota(m, `✗ a sua conta não tem a janela “${j}”`); continue; }
+          const el = j === 'copiador' ? ui.panel : j === 'wired' ? ui.wpanel : ui.cnpanel;
+          el.hidden = false;
+          ui.root.appendChild(el);
+          if (j === 'copiador') render(); else if (j === 'wired') renderW(); else renderCn();
+          iaNota(m, `✓ abri a janela ${j}`);
+        }
+      } catch (e) {
+        iaNota(m, '✗ ' + e.message);
+      }
+    }
+    renderIa();
+  }
+  function iaBotao(mi, bi) {
+    const m = IA.hist[mi];
+    const b = m && m.botoes[bi];
+    if (!b) return;
+    if (b.a === 'falar') {
+      if (!connected()) { toast('Sem conexão com o jogo', true); return; }
+      if ((S.mutedUntil || 0) > Date.now()) { toast('O hotel te deixou sem falar por um tempo: espere', true); return; }
+      send(OUT.CHAT, (w) => w.str(b.texto).int(0));
+      lastCommandAt = Date.now();
+      b.feito = true;
+      renderIa();
+    }
+  }
+  async function iaEnviar(txt) {
+    txt = String(txt || '').trim().slice(0, 500);
+    if (!txt) return;
+    if (ui && ui.iain) ui.iain.value = '';
+    iaAbre();
+    iaMsg('eu', txt);
+    if (/^(parar?|pare|stop|chega)\b/i.test(txt) && (AC.on || AC.pick)) { acPara('você mandou parar'); return; }
+    if (IA.run || PERG.run || API.run) { iaMsg('ia', 'Espere a resposta de antes chegar.'); return; }
+    if (!(await apiPronto())) { iaMsg('ia', SEM_AJUDANTE + '. Com ele e uma chave da API eu respondo aqui.'); return; }
+    IA.run = true;
+    renderIa();
+    try {
+      const r = await apiPedir(txt, IA_SISTEMA, iaTexto(txt), 'chat');
+      if (!r.ok) { iaMsg('ia', r.erro === 'cancelado' ? 'Cancelado.' : 'Não deu: ' + r.erro); return; }
+      const resp = iaLe(r.texto);
+      const m = iaMsg('ia', resp.texto || (resp.acoes.length ? 'Pronto.' : '(sem resposta)'));
+      iaExecuta(resp.acoes, m);
+    } finally {
+      IA.run = false;
+      renderIa();
+    }
+  }
+  function iaAbre() {
+    if (!ui || !ui.iapanel) return;
+    ui.iapanel.hidden = false;
+    ui.root.appendChild(ui.iapanel); // por cima das outras janelas
+    iaPosPainel();
+    renderIa();
+  }
+  // A barra fica colada do lado direito do chat do jogo (ou em cima dele, se não couber), até a pessoa arrastar.
+  function iaSegue() {
+    clearTimeout(IA.segueT);
+    IA.segueT = setTimeout(iaSegue, 700);
+    if (!ui || !ui.iabar || typeof document === 'undefined') return;
+    const chat = document.querySelector('.chatinput-container') || document.querySelector('.chat-input');
+    const r = chat && chat.getBoundingClientRect();
+    const visivel = !!(r && r.width > 0 && r.height > 0);
+    ui.iabar.hidden = !S.liberado || S.bloqueado || (!visivel && !ui.iabar.dataset.movido);
+    if (ui.iabar.hidden) return;
+    if (visivel && !ui.iabar.dataset.movido) {
+      const livre = window.innerWidth - r.right - 16;
+      let w, l, t;
+      if (livre >= 210) { w = Math.min(320, livre); l = r.right + 8; t = r.top + (r.height - 34) / 2; }
+      else { w = Math.min(360, Math.max(220, r.width)); l = r.left; t = r.top - 42; }
+      ui.iabar.style.width = Math.round(w) + 'px';
+      ui.iabar.style.left = Math.round(l) + 'px';
+      ui.iabar.style.top = Math.round(t) + 'px';
+      ui.iabar.style.right = 'auto';
+      ui.iabar.style.bottom = 'auto';
+    }
+    iaPosPainel();
+  }
+  function iaPosPainel() {
+    if (!ui || !ui.iapanel || ui.iapanel.hidden || ui.iapanel.dataset.movido || ui.iabar.hidden) return;
+    const b = ui.iabar.getBoundingClientRect();
+    const w = Math.min(380, window.innerWidth - 24);
+    ui.iapanel.style.left = Math.round(Math.max(12, Math.min(window.innerWidth - w - 12, b.right - w))) + 'px';
+    ui.iapanel.style.bottom = Math.round(Math.max(12, window.innerHeight - b.top + 8)) + 'px';
+    ui.iapanel.style.top = 'auto';
+    ui.iapanel.style.right = 'auto';
+  }
+  function renderIa() {
+    if (!ui || !ui.iapanel) return;
+    const st = ui.iapanel.querySelector('.iast');
+    let sh = '';
+    if (IA.run) sh += '⏳ pensando… (o ajudante pode pedir para você confirmar) ';
+    if (AC.pick) sh += '🖱 clique no mobi do autoclick ';
+    if (AC.on) sh += `🖱 autoclick: ${AC.feitos}${AC.vezes ? '/' + AC.vezes : ''} cliques `;
+    if (AC.on || AC.pick) sh += '<button data-a="iaParar">parar</button>';
+    st.hidden = !sh;
+    if (st.__last !== sh) { st.__last = sh; st.innerHTML = sh; }
+    if (ui.iapanel.hidden) return;
+    const box = ui.iapanel.querySelector('.iamsgs');
+    const h = IA.hist.map((m, i) => `<div class="iam ${m.de === 'eu' ? 'eu' : 'ia'}">${m.de === 'eu' ? esc(m.texto) : mdLeve(m.texto)}` +
+      (m.notas || []).map((n) => `<div class="nota">${esc(n)}</div>`).join('') +
+      ((m.botoes || []).length ? `<div class="acts">${m.botoes.map((b, j) => `<button data-a="iaAcao" data-m="${i}" data-i="${j}"${b.feito ? ' disabled' : ''}>${esc(b.feito ? '✓ mandei' : b.rot)}</button>`).join('')}</div>` : '') +
+      '</div>').join('') || '<div class="dim">Peça o que quiser: “traduz para o inglês: bem-vindo ao meu quarto”, “autoclick 20 vezes a cada 1 segundo”, ' +
+      '“liga o :up 2.5”, “como faço uma porta com senha?”. Também dá para escrever <b>ia: …</b> no chat do jogo.</div>';
+    if (box.__last !== h) { box.__last = h; box.innerHTML = h; box.scrollTop = box.scrollHeight; }
+  }
+
+  // 🖱 Autoclick: usa (clica 2x) um mobi várias vezes. A pessoa escolhe o mobi clicando nele no jogo.
+  const AC = { on: false, pick: false, id: null, vezes: 0, feitos: 0, ms: 1000, gen: 0, room: null, inicio: 0 };
+  const AC_MIN_MS = 500, AC_MAX_MIN = 30;
+  function acPedirMobi(vezes, seg) {
+    if (!connected() || S.room.id == null) throw new Error('entre num quarto primeiro');
+    acPara(null);
+    const n = Math.round(Number(vezes) || 0);
+    AC.vezes = Math.max(0, Math.min(5000, n));
+    const s = Number(String(seg == null ? 1 : seg).replace(',', '.'));
+    AC.ms = Math.max(AC_MIN_MS, Math.round((Number.isFinite(s) && s > 0 ? s : 1) * 1000));
+    AC.pick = true;
+    gameNotice('🖱 Autoclick: clique no mobi que eu devo clicar (o boneco não anda)');
+    renderIa();
+  }
+  function acTap(tap) {
+    let id = tap.id;
+    if (id == null) {
+      const aqui = [...S.floor.values()].filter((o) => o.x === tap.x && o.y === tap.y).sort((a, b) => b.z - a.z);
+      if (!aqui.length) { gameNotice('🖱 Não achei mobi nesse quadrado: clique em cima do mobi'); return; }
+      id = aqui[0].id;
+    }
+    if (!S.floor.has(id)) { gameNotice('🖱 Não achei esse mobi: clique de novo nele'); return; }
+    AC.pick = false;
+    AC.id = id;
+    AC.on = true;
+    AC.feitos = 0;
+    AC.room = S.room.id;
+    AC.inicio = Date.now();
+    const gen = ++AC.gen;
+    const o = S.floor.get(id);
+    const nome = (describe('floor', o) || {}).name || 'mobi';
+    iaMsg('ia', `🖱 Autoclick em ${nome} (${o.x},${o.y}): ${AC.vezes ? AC.vezes + ' vezes' : 'até você mandar parar'}, a cada ${cnFmt(AC.ms / 1000)} s. Escreva “parar” para parar.`);
+    acLoop(gen).catch((e) => acPara(e.message));
+  }
+  function acPara(motivo) {
+    const estava = AC.on || AC.pick;
+    AC.on = false;
+    AC.pick = false;
+    AC.gen++;
+    if (estava && motivo) iaMsg('ia', `🖱 Autoclick parado: ${motivo} (${AC.feitos} ${AC.feitos === 1 ? 'clique' : 'cliques'}).`);
+    renderIa();
+  }
+  async function acLoop(gen) {
+    while (AC.on && AC.gen === gen) {
+      if (!connected() || S.room.id !== AC.room) { acPara('você saiu do quarto'); return; }
+      if (!S.floor.has(AC.id)) { acPara('o mobi saiu do quarto'); return; }
+      if (Date.now() - AC.inicio > AC_MAX_MIN * 60000) { acPara(`passou de ${AC_MAX_MIN} minutos`); return; }
+      const mudo = (S.mutedUntil || 0) - Date.now();
+      if (mudo > 0) { await sleep(Math.min(5000, mudo + 100)); continue; }
+      send(OUT.USE, (w) => w.int(AC.id).int(0));
+      AC.feitos++;
+      if (AC.feitos === 1 || AC.feitos % 5 === 0) renderIa();
+      if (AC.vezes && AC.feitos >= AC.vezes) { acPara('terminei'); return; }
+      await sleep(AC.ms);
+    }
+  }
+
   function wmApplyJson(text) {
     const m = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);
     const sys = JSON.parse(m ? m[1] : text);

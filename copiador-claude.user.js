@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Copiador de Quarto – Claude (chave da API)
 // @namespace    copiador-de-quarto
-// @version      1.0.0
-// @description  Ajudante do Copiador de Quarto: guarda a sua chave da API da Anthropic no Tampermonkey e manda os pedidos de wired para o Claude.
+// @version      1.1.0
+// @description  Ajudante do Copiador de Quarto: guarda a sua chave da API da Anthropic no Tampermonkey e manda os pedidos de wired, as perguntas e o chat IA para o Claude.
 // @match        *://*.habblet.city/*
 // @match        *://habblet.city/*
 // @run-at       document-start
@@ -25,13 +25,15 @@
 // Conversa com o Copiador por eventos na página (só texto):
 //   página → ajudante: "copiador-claude:ola" e "copiador-claude:pedido" {id, sistema, texto}
 //   ajudante → página: "copiador-claude:pronto" {temChave} e "copiador-claude:resposta" {id, ok, texto | erro}
-// Cada pedido pede confirmação numa janela do navegador, que o site não consegue clicar sozinho.
+// Cada pedido pede confirmação numa janela do navegador, que o site não consegue clicar sozinho. O chat IA (modo "chat")
+// pede uma vez e fica liberado por 30 minutos, com respostas rápidas (pouco esforço e resposta curta).
 
 (function () {
   'use strict';
   const KEY = 'chaveAnthropic';
   const MODEL = 'claude-opus-5-5';
 
+  let liberadoAte = 0; // chat IA: liberado até esta hora (pede de novo depois de 30 minutos)
   const temChave = () => !!GM_getValue(KEY, '');
   const avisar = (nome, dados) => document.dispatchEvent(new CustomEvent(nome, { detail: JSON.stringify(dados) }));
   const pronto = () => avisar('copiador-claude:pronto', { temChave: temChave(), modelo: MODEL });
@@ -51,7 +53,7 @@
     if (window.confirm('Apagar a chave do Claude deste navegador?')) { GM_deleteValue(KEY); pronto(); }
   });
 
-  function chamar(sistema, texto) {
+  function chamar(sistema, texto, chat) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: 'POST',
@@ -65,8 +67,8 @@
         },
         data: JSON.stringify({
           model: MODEL,
-          max_tokens: 16000,
-          output_config: { effort: 'high' },
+          max_tokens: chat ? 4000 : 16000,
+          output_config: { effort: chat ? 'low' : 'high' },
           fallbacks: 'default', // se o Claude recusar por engano, o próprio servidor tenta outro modelo
           system: sistema,
           messages: [{ role: 'user', content: texto }],
@@ -78,8 +80,8 @@
           if (r.status === 401) { reject(new Error('a chave não foi aceita (confira ou troque no menu do Tampermonkey)')); return; }
           if (r.status === 429) { reject(new Error('limite de uso da API: espere um pouco e tente de novo')); return; }
           if (r.status !== 200 || !j) { reject(new Error((j && j.error && j.error.message) || `a API respondeu ${r.status}`)); return; }
-          if (j.stop_reason === 'refusal') { reject(new Error('o Claude não quis montar esse pedido')); return; }
-          if (j.stop_reason === 'max_tokens') { reject(new Error('a resposta ficou grande demais e foi cortada: peça um sistema menor')); return; }
+          if (j.stop_reason === 'refusal') { reject(new Error('o Claude não quis responder esse pedido')); return; }
+          if (j.stop_reason === 'max_tokens') { reject(new Error('a resposta ficou grande demais e foi cortada: peça algo menor')); return; }
           const txt = (j.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
           if (!txt.trim()) { reject(new Error('o Claude respondeu vazio')); return; }
           resolve(txt);
@@ -99,8 +101,14 @@
     const fim = (dados) => avisar('copiador-claude:resposta', { id, ...dados });
     if (!temChave() && !pedirChave()) { fim({ ok: false, erro: 'sem chave do Claude' }); return; }
     const resumo = String(p.pedido || '').slice(0, 160);
-    if (!window.confirm(`Mandar este pedido ao Claude? Ele usa a sua chave da API (cobrado por uso).\n\n“${resumo}”`)) { fim({ ok: false, erro: 'cancelado' }); return; }
-    chamar(p.sistema, p.texto).then((texto) => fim({ ok: true, texto }), (err) => fim({ ok: false, erro: err.message }));
+    const chat = p.modo === 'chat';
+    if (chat && Date.now() < liberadoAte) {
+      // chat IA já liberado nesta meia hora
+    } else if (chat) {
+      if (!window.confirm(`Liberar o chat IA do Copiador por 30 minutos? Cada mensagem usa a sua chave da API (cobrado por uso).\n\n“${resumo}”`)) { fim({ ok: false, erro: 'cancelado' }); return; }
+      liberadoAte = Date.now() + 30 * 60 * 1000;
+    } else if (!window.confirm(`Mandar este pedido ao Claude? Ele usa a sua chave da API (cobrado por uso).\n\n“${resumo}”`)) { fim({ ok: false, erro: 'cancelado' }); return; }
+    chamar(p.sistema, p.texto, chat).then((texto) => fim({ ok: true, texto }), (err) => fim({ ok: false, erro: err.message }));
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pronto); else pronto();
 })();
