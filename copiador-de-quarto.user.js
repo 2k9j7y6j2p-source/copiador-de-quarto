@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.41
+// @version      3.0.42
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.41';
+  const VERSION = '3.0.42';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -1196,7 +1196,7 @@
         try { walk = walkOf(data); chat = walk ? null : chatOf(data); } catch (_) { /* ignorado */ }
         // Montando wired: o clique escolhe o quadrado / o mobi e o boneco não anda.
         // Autoclick: o clique escolhe o mobi e o boneco não anda.
-        if (AC.pick && S.room.id != null) {
+        if ((AC.pick === 'mobi' || AC.pick === 'andar1' || AC.pick === 'andar2') && S.room.id != null) {
           const tap = walk || tapOf(data);
           if (tap) { try { acTap(tap); } catch (e) { console.warn(TAG, e); } return undefined; }
         }
@@ -5654,6 +5654,7 @@
         construtor: { muda: (t, d) => cnMuda(t, d), digita: (t, v, agora) => cnDigitou(t, v, agora), desliga: (t) => cnDesliga(t), modo: (on) => cnModo(on), emCima: (on) => { CN.emCima = !!on; if (on) CN.mesma = false; }, mesma: (on) => { CN.mesma = !!on; if (on) CN.emCima = false; }, clique: (on) => { CN.clique = !!on; }, lote: (n) => cncLote(n), area: { seleciona: () => cnaSeleciona(), limpa: () => cnaLimpa(), parar: () => { CNA.parar = true; }, get state() { return CNA; } }, get state() { return CN; }, get compra() { return CNC; } },
         aprender: { toggle: () => aprToggle(), get state() { return APR; }, texto: () => aprTexto(), pilhas: () => aprPilhas() },
         ia: { le: iaLe, executa: (acoes) => { const m = iaMsg('ia', 'teste'); iaExecuta(acoes, m); return m; }, botao: iaBotao, texto: iaTexto, parar: () => acPara('teste'),
+          envia: (t) => iaEnviar(t), tempo: acTempo, get assistente() { return ACW; },
           get autoclick() { return AC; }, get hist() { return IA.hist; } },
         wired: { systems: () => wmAll(), match: wmMatches, start: wmStart, tap: wmTap, done: wmNextRole, get state() { return WM; }, read: readRoomWired, get reading() { return WREAD; },
           readDef: readWiredDef, params: wiredParams, apply: wmApplyJson, copy: wcopyFromSelection, paste: wcopyBuild, pasteConfig: wcfgStart, anchorOf: findCopyAnchor, piles: wiredPiles, deps: gameDeps, get personal() { return S.wcopies; }, repick: wmRepick, undo: () => { const l = WM.picks[WM.sys.papeis[WM.role][0]]; if (l) l.pop(); },
@@ -6418,7 +6419,7 @@
       </div>
       <div class="iabar" hidden>
         <span class="iaico" title="Chat IA: clique para abrir a conversa · arraste para mudar de lugar · clique duplo: volta para o lado do chat">🤖</span>
-        <input class="iain" placeholder="IA: traduzir, autoclick, dúvidas…" spellcheck="false" maxlength="500">
+        <input class="iain" placeholder="IA: dúvidas de wired, autoclick, traduzir…" spellcheck="false" maxlength="500">
         <button class="iago" data-a="iaEnviar" title="mandar para a IA">➤</button>
       </div>
       <div class="panel iapanel" hidden>
@@ -6683,6 +6684,15 @@
     });
     $('.iahead').addEventListener('dblclick', () => { delete ui.iapanel.dataset.movido; iaPosPainel(); });
     iaSegue();
+    // autoclick "onde o mouse estiver": guardo onde o mouse está; Esc para o autoclick
+    document.addEventListener('mousemove', (e) => { MOUSE.x = e.clientX; MOUSE.y = e.clientY; MOUSE.t = Date.now(); }, { capture: true, passive: true });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (AC.on || AC.pick)) acPara('você apertou Esc'); }, true);
+    document.addEventListener('mousedown', (e) => { // autoclick "no mesmo ponto": o próximo clique no jogo marca o ponto
+      if (AC.pick !== 'ponto' || !e.isTrusted) return;
+      if (!e.target || e.target.tagName !== 'CANVAS') return;
+      AC.alvo = { x: e.clientX, y: e.clientY };
+      acComeca();
+    }, true);
     setTimeout(showWelcome, 0); // se o nick já chegou antes do painel
     vigiaAmigos();
     if (S.log.length) root.querySelectorAll('.log').forEach((pre) => { pre.textContent = S.log.join('\n'); });
@@ -9330,8 +9340,8 @@
           if (txt.startsWith(':')) { iaNota(m, '✗ comandos com “:” eu não mando pela IA'); continue; }
           m.botoes.push({ rot: `💬 mandar no chat: “${txt}”`, a: 'falar', texto: txt });
         } else if (tipo === 'autoclick') {
-          acPedirMobi(a.vezes, a.intervalo);
-          iaNota(m, `🖱 clique no mobi do jogo que eu devo clicar (${AC.vezes ? AC.vezes + ' vezes' : 'até você mandar parar'}, a cada ${cnFmt(AC.ms / 1000)} s)`);
+          const md = ['mouse', 'ponto', 'mobi', 'andar'].includes(a.modo) ? a.modo : 'mobi';
+          acAssistente({ modo: md, ms: a.intervalo != null ? Number(a.intervalo) * 1000 : null, vezes: a.vezes != null ? Number(a.vezes) : null });
         } else if (tipo === 'parar') {
           acPara('você pediu');
         } else if (tipo === 'up' || tipo === 'state' || tipo === 'spin') {
@@ -9368,6 +9378,31 @@
       lastCommandAt = Date.now();
       b.feito = true;
       renderIa();
+    } else if (b.a === 'ac') { // resposta do assistente de autoclick
+      iaMsg('eu', b.rot);
+      ACW[b.k] = b.v;
+      acPergunta();
+    } else if (b.a === 'montar') {
+      if (S.nivel === 'construcao') { iaMsg('ia', `A sua conta não tem o ⚡ Wired. ${CONTATO}`); return; }
+      ui.wsub = 'montar';
+      ui.wpanel.hidden = false;
+      ui.root.appendChild(ui.wpanel);
+      renderW();
+      try { wmStart(b.id); iaMsg('ia', '🧱 Agora clique no quadrado do quarto onde vai a pilha (a janela ⚡ Wired mostra os passos).'); } catch (e) { iaMsg('ia', '✗ ' + e.message); }
+    } else if (b.a === 'guia') {
+      if (S.nivel === 'construcao') { iaMsg('ia', `A sua conta não tem o ⚡ Wired. ${CONTATO}`); return; }
+      ui.wsub = 'guia';
+      ui.wfilter = b.filtro || '';
+      const f = ui.root.querySelector('.wfilter');
+      if (f) f.value = ui.wfilter;
+      ui.wpanel.hidden = false;
+      ui.root.appendChild(ui.wpanel);
+      renderW();
+    } else if (b.a === 'menu') {
+      iaEnviar(b.v);
+    } else if (b.a === 'claude') {
+      b.feito = true;
+      iaClaude(b.q);
     }
   }
   async function iaEnviar(txt) {
@@ -9376,9 +9411,35 @@
     if (ui && ui.iain) ui.iain.value = '';
     iaAbre();
     iaMsg('eu', txt);
-    if (/^(parar?|pare|stop|chega)\b/i.test(txt) && (AC.on || AC.pick)) { acPara('você mandou parar'); return; }
+    const t = semAcento(txt);
+    if (/^(parar?|pare|stop|chega|desliga o autoclick)\b/.test(t)) { if (AC.on || AC.pick) acPara('você mandou parar'); else iaMsg('ia', 'Nada ligado para parar.'); return; }
+    // respondendo o assistente de autoclick
+    if (ACW.espera && acRespostaDigitada(t)) return;
+    if (/^(oi|ola|eai|e ai|bom dia|boa tarde|boa noite|ajuda|help|menu|o que voce faz)\b/.test(t)) { iaMenu(); return; }
+    if (/auto ?cli(ck|que)|clicar sozinho|clique automatico|ficar clicando|clicar (varias|muitas) vezes|anti.?(afk|ausente)|nao ficar ausente/.test(t)) { acDoTexto(t); return; }
+    if (/^(traduz|traduc|traduza|traduzir|translate)/.test(t) || /\b(traduz|traduza|traduzir)\b/.test(t)) { await iaTraduz(txt); return; }
+    if (iaComandoTexto(t)) return;
+    const achou = iaResponde(txt);
+    if (achou) return;
+    const pode = await apiPronto();
+    iaMsg('ia', 'Não achei uma resposta pronta para isso. Tente com outras palavras (ex.: “teleporte”, “porta com senha”, “placar”), ' +
+      'ou veja o que eu sei fazer:', {
+      botoes: [{ rot: '📋 o que você faz?', a: 'menu', v: 'menu' }, ...(S.nivel !== 'construcao' ? [{ rot: '📖 abrir o guia de wired', a: 'guia', filtro: '' }] : []),
+        ...(pode ? [{ rot: '🤖 perguntar ao Claude (usa a sua chave)', a: 'claude', q: txt }] : [])],
+    });
+  }
+  function iaMenu() {
+    const w = S.nivel !== 'construcao';
+    iaMsg('ia', 'Oi! Eu respondo na hora, sem custo:\n• **dúvidas** do plugin' + (w ? ' e de **wired** (ex.: “como faço teleporte com senha?”)' : '') +
+      '\n• **autoclick**: eu pergunto como você quer\n• **traduzir**: “traduz para o inglês: bem-vindo”\n• **comandos**: “up 2.5”, “state 3”, “spin 2”, “desliga o up”, “esconde os wired”', {
+      botoes: [{ rot: '🖱 autoclick', a: 'menu', v: 'autoclick' }, { rot: '🌐 como traduzir', a: 'menu', v: 'traduzir' },
+        ...(w ? [{ rot: '⚡ dúvida de wired', a: 'menu', v: 'quais sistemas de wired prontos tem?' }] : []), { rot: '📏 altura (:up)', a: 'menu', v: 'como uso a altura :up?' }],
+    });
+  }
+  // O caminho do Claude (pelo ajudante com a chave da API): resposta em JSON com texto e ações.
+  async function iaClaude(txt) {
     if (IA.run || PERG.run || API.run) { iaMsg('ia', 'Espere a resposta de antes chegar.'); return; }
-    if (!(await apiPronto())) { iaMsg('ia', SEM_AJUDANTE + '. Com ele e uma chave da API eu respondo aqui.'); return; }
+    if (!(await apiPronto())) { iaMsg('ia', SEM_AJUDANTE + '.'); return; }
     IA.run = true;
     renderIa();
     try {
@@ -9390,6 +9451,150 @@
     } finally {
       IA.run = false;
       renderIa();
+    }
+  }
+
+  // ---------- respostas prontas (sem API): o guia de wired, os sistemas prontos e as dúvidas do plugin
+  const semAcento = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const IA_PARADAS = new Set(('a o as os um uma uns umas de do da dos das no na nos nas em e ou que pra pro para por com sem se eu me meu minha ' +
+    'voce vc quero queria fazer faco faz como qual quais onde quando tem ter isso esse essa este esta ai la aqui mais muito pode posso consigo ' +
+    'usar uso ajuda oi ola sobre algum alguma alguem sei saber explica explique funciona serve wired wireds mobi mobis quarto coisa jeito').split(' '));
+  const IA_SINONIMOS = {
+    teleporte: ['teleport', 'teletransport'], teleportar: ['teleport'], senha: ['senha', 'diz algo', 'palavra'], palavra: ['palavra', 'diz algo'],
+    falar: ['diz algo', 'fala', 'palavra'], fala: ['diz algo', 'fala'], pontos: ['placar', 'pontu'], ponto: ['placar', 'pontu'], placar: ['placar'],
+    tempo: ['tempo', 'repetir', 'cronometr', 'timer'], timer: ['tempo', 'cronometr', 'repetir'], cronometro: ['cronometr', 'tempo'],
+    pisar: ['pisa', 'piso', 'caminh'], piso: ['piso', 'pisa'], clicar: ['clic', 'clique', 'usar'], clique: ['clic', 'clique'],
+    andar: ['mov', 'andar', 'caminh'], mover: ['mov'], seguir: ['persegu', 'segu'], perseguir: ['persegu'], fugir: ['fug'],
+    girar: ['gir', 'rota'], estado: ['estado'], afk: ['afk', 'ausente'], ausente: ['afk', 'ausente'], variavel: ['variav'],
+    sinal: ['sinal', 'antena'], porta: ['porta', 'portao'], vip: ['vip'], boas: ['boas-vindas', 'bem-vindo', 'entra'], entrar: ['entra'],
+    sair: ['sai', 'sair'], jogo: ['jogo'], dado: ['dado'], aleatorio: ['aleat'], mensagem: ['mensag', 'balao', 'aviso'], aviso: ['aviso', 'mensag'],
+    velocidade: ['velocidade', 'rapido', 'lento'], rapido: ['rapido', 'velocidade'], altura: ['altura', ':up'], up: [':up', 'altura'],
+    comprar: ['compr'], copiar: ['copi'], colar: ['col'], floor: ['floor', 'piso', 'planta'], planta: ['floor', 'planta'],
+  };
+  function iaPalavras(x) { return semAcento(x).split(/[^a-z0-9:]+/).filter((w) => w.length > 2 && !IA_PARADAS.has(w)); }
+  function iaPontos(pal, campos) { // campos: [[texto, peso]]
+    let n = 0;
+    for (const w of pal) {
+      const alts = [w, ...(IA_SINONIMOS[w] || [])];
+      if (w.length >= 5) alts.push(w.slice(0, -1), w.slice(0, -2));
+      let melhor = 0;
+      for (const [txt, peso] of campos) if (alts.some((a) => txt.includes(a))) melhor = Math.max(melhor, peso);
+      n += melhor;
+    }
+    return n;
+  }
+  const IA_FAQ = [
+    ['up altura :up subir descer empilhar', '📏 Altura dos mobis (:up)', 'No 🧰 Ajudante, ligue o **Modo construtor** e use ▲ ▼ na Altura (de −25 a 63, passo de 0.01 a 1). ' +
+      'Eu mando o :up e o próximo mobi que você colocar fica nessa altura. “desligar” manda :up. Aqui no chat: “up 2.5” ou “desliga o up”.'],
+    ['clique altura quadrado automatica', '📍 Altura do clique', 'No 🧰 Ajudante, ligue “📍 altura do clique”: é só clicar para pôr o mobi e eu acerto a altura do que já está no quadrado.'],
+    ['cima outro empilhar mesma altura', '🧱 Em cima de outro mobi', 'No 🧰 Ajudante: “em cima do mobi clicado” põe o próximo mobi em cima do mobi em que você clicou; ' +
+      '“mesma altura do mobi clicado” deixa na mesma altura dele.'],
+    ['state estado mobi ligado aceso', '🔁 Estado do mobi (:state)', 'No 🧰 Ajudante: Estado do mobi, de 0 a 99. O próximo mobi já entra nesse estado (ex.: luminária acesa). Aqui: “state 3”.'],
+    ['spin girar rotacao direcao virar', '🔄 Girar o mobi (:spin)', 'No 🧰 Ajudante: 0 = posição normal, 2, 4 e 6 = os outros giros. Aqui: “spin 2”.'],
+    ['compra comprar automatica acabou acabar', '🛒 Compra automática', 'Com o Modo construtor ligado, quando acaba um mobi e você clica no jogo, eu compro mais (a quantidade que você escolher; 0 = não comprar).'],
+    ['area preencher linha fileira varios', '▦ Preencher área', 'No 🧰 Ajudante: “selecionar área”, clique em 2 cantos do chão e depois ponha 1 mobi: eu preencho a área com ele.'],
+    ['hidewired esconder mostrar wired invisivel', '👁 Esconder os wired', 'Botão “mostrar / esconder os wired (:hidewired)” no 🧰 Ajudante, ou escreva aqui “esconde os wired”.'],
+    ['copiar colar quarto copia inteiro', '🏠 Copiar e colar um quarto', 'Só contas com tudo (botão >_). Entre no quarto e “Guardar este quarto como cópia”; no seu quarto, “Colar tudo”: ' +
+      'eu mostro o que falta, compro e coloco cada mobi no lugar, com altura, giro e estado.'],
+    ['floor piso planta altura chao lajota andavel', '🟫 Piso e floor', 'Na aba Piso do >_ Copiador (em “mais”): alturas do chão, código do floor para o Importar do editor de planta e lajotas andáveis.'],
+    ['ler copiar wired pilha configuracao outro quarto', '🔎 Ler e copiar wired', 'Na janela ⚡ Wired → “Ler wired do quarto”: eu abro cada wired, mostro o mapa das pilhas, ' +
+      'você escolhe e copia; no seu quarto, “colar as pilhas copiadas” (eu compro e programo) ou “colar só as configurações”.'],
+    ['aprender wired montar alguem personalizados', '🎓 Aprender wired', 'Na janela ⚡ Wired → Aprender: ligue “aprender junto” e fique no quarto enquanto alguém monta; eu guardo cada pilha em ⭐ PERSONALIZADOS.'],
+    ['montar pedir sistema pronto prontos', '🧱 Sistemas prontos', 'Na janela ⚡ Wired → “Pedir e montar”: escreva o que precisa, escolha o sistema e clique em “montar no quarto”; ' +
+      'depois clique no quadrado e nos mobis que eu pedir. Aqui no chat, pergunte (ex.: “sistema de senha”) e eu mostro o botão de montar.'],
+    ['configurar wired salvar clique', '⚙ Configurar um wired', 'Coloque o wired no quarto, clique 2x nele, escolha os mobis clicando neles no quarto e salve.'],
+    ['arrastar mover janela botao lugar', '↔ Mudar as janelas de lugar', 'Arraste as janelas pelo cabeçalho e os botões por eles mesmos; clique duplo no cabeçalho volta para o lugar. A barra 🤖 também se arrasta pelo 🤖.'],
+    ['acesso nivel liberar conta bloqueado vip', '🔑 Acesso', `Cada conta tem um nível (tudo, wired + ajudante, ou só o ajudante). ${CONTATO}`],
+  ];
+  function iaResponde(txt) {
+    const pal = iaPalavras(txt);
+    if (!pal.length) return false;
+    const w = S.nivel !== 'construcao';
+    const G = WIRED_GUIDE;
+    const res = [];
+    for (const [k, t, r] of IA_FAQ) res.push({ n: iaPontos(pal, [[semAcento(t), 3], [k, 2], [semAcento(r), 1]]), tipo: 'faq', t, r });
+    if (w) {
+      for (const sy of wmAll()) res.push({ n: iaPontos(pal, [[semAcento(sy.t), 3], [semAcento(sy.tags || ''), 2], [semAcento(sy.d || ''), 1]]) + 0.5, tipo: 'sys', sy });
+      for (const [t, passos, o] of G.construcoes) res.push({ n: iaPontos(pal, [[semAcento(t), 3], [semAcento(passos.join(' ')), 1], [semAcento(o || ''), 1]]), tipo: 'cons', t, passos, o });
+      for (const [k, n, c, d, u] of G.itens) res.push({ n: iaPontos(pal, [[semAcento(n), 3], [c, 2], [semAcento(k), 1], [semAcento(d), 1], [semAcento(u), 1]]), tipo: 'item', k, nome: n, c, d, u });
+      for (const [k, gs] of Object.entries(G.super)) for (const [g, cs] of gs) for (const [c, d] of cs) {
+        res.push({ n: iaPontos(pal, [[semAcento(c), 2], [semAcento(d), 1], ['super', 1]]), tipo: 'super', k, g, c, d });
+      }
+    }
+    const best = res.filter((x) => x.n >= 2).sort((a, b) => b.n - a.n);
+    if (!best.length) return false;
+    const top = best.filter((x) => x.n >= best[0].n * 0.6).slice(0, 3);
+    const linhas = [], botoes = [];
+    for (const x of top) {
+      if (x.tipo === 'faq') linhas.push(`**${x.t}**\n${x.r}`);
+      else if (x.tipo === 'sys') {
+        linhas.push(`🧱 **${x.sy.t}** (sistema pronto)${x.sy.d ? '\n' + x.sy.d : ''}`);
+        botoes.push({ rot: `🧱 montar: ${x.sy.t}`.slice(0, 60), a: 'montar', id: x.sy.id });
+      } else if (x.tipo === 'cons') linhas.push(`🧱 **${x.t}** (cada linha é uma pilha, tudo no mesmo quadrado)\n${x.passos.map((q, i) => `${i + 1}. ${q}`).join('\n')}${x.o ? '\n' + x.o : ''}`);
+      else if (x.tipo === 'item') linhas.push(`⚡ **${x.nome}** (${x.k})\n${x.d}\n▶ ${x.u}`);
+      else linhas.push(`✨ Super Wired (${x.k === 'efeito' ? 'efeito' : 'condição'}, ${x.g}): \`${x.c}\` — ${x.d}`);
+    }
+    if (w && top.some((x) => x.tipo !== 'faq')) botoes.push({ rot: '📖 ver no guia', a: 'guia', filtro: pal[0] });
+    if (API.pronto) botoes.push({ rot: '🤖 não era isso: perguntar ao Claude', a: 'claude', q: txt });
+    iaMsg('ia', linhas.join('\n\n'), { botoes });
+    return true;
+  }
+  // "up 2.5", "liga o state 3", "spin 2", "desliga o up", "esconde os wired"
+  function iaComandoTexto(t) {
+    if (/(esconde|mostra|some|aparece)\w* (os )?wired|hidewired/.test(t)) {
+      iaExecuta([{ a: 'hidewired' }], iaMsg('ia', 'Mandei o :hidewired.'));
+      return true;
+    }
+    const m = /(?:^|[\s:])(up|altura|state|estado|spin|giro|girar)\b(?:\s+(?:para|pra|em|no|na|de))?\s*(-?\d+(?:[.,]\d+)?)?/.exec(t);
+    if (!m) return false;
+    const tipo = /up|altura/.test(m[1]) ? 'up' : /state|estado/.test(m[1]) ? 'state' : 'spin';
+    const desliga = /deslig|tira|para de|sem /.test(t);
+    if (!desliga && m[2] == null) return false; // é uma pergunta, não um comando
+    if (/^(como|o que|qual|pra que|para que)\b/.test(t) || /wired/.test(t)) return false;
+    const msg = iaMsg('ia', desliga ? `Desligando o ${tipo === 'up' ? ':up' : ':' + tipo}.` : `Ligando o ${tipo === 'up' ? ':up' : ':' + tipo} ${m[2].replace(',', '.')}.`);
+    iaExecuta([{ a: tipo, valor: desliga ? null : m[2] }], msg);
+    return true;
+  }
+  // 🌐 Traduzir (o próprio hotel deixa falar com o tradutor do Google)
+  const IDIOMAS = { ingles: 'en', espanhol: 'es', portugues: 'pt', frances: 'fr', italiano: 'it', alemao: 'de', japones: 'ja', coreano: 'ko',
+    chines: 'zh-CN', russo: 'ru', arabe: 'ar', turco: 'tr', holandes: 'nl', polones: 'pl', hindi: 'hi', grego: 'el', sueco: 'sv' };
+  async function iaTraduz(txt) {
+    const t = semAcento(txt);
+    let tl = null;
+    for (const [k, v] of Object.entries(IDIOMAS)) if (new RegExp(`\\b${k}\\b`).test(t.split(':')[0])) { tl = v; break; }
+    let texto = '';
+    const aspas = /["“”«]([^"“”«»]+)["“”»]/.exec(txt);
+    if (aspas) texto = aspas[1];
+    else if (txt.includes(':')) texto = txt.slice(txt.indexOf(':') + 1);
+    else {
+      texto = txt.replace(/^\s*(traduz\w*|tradu[cç][aã]o|translate)\s*(?:(?:isso|isto|para|pra|pro|em|o|a)\b\s*)*/i, '');
+      const tn = semAcento(texto);
+      const k = Object.keys(IDIOMAS).find((x) => tn.startsWith(x));
+      if (k) texto = texto.slice(k.length);
+    }
+    texto = texto.trim();
+    if (!texto || /^(traduz\w*|traduzir)$/i.test(texto)) {
+      iaMsg('ia', 'Mande assim: **traduz para o inglês: bem-vindo ao meu quarto** (ou só “traduz: …” que eu traduzo para o português; se já for português, vai para o inglês). ' +
+        `Idiomas: ${Object.keys(IDIOMAS).join(', ')}.`);
+      return;
+    }
+    const pede = async (alvo) => {
+      const r = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(alvo)}&dt=t`, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: 'q=' + encodeURIComponent(texto.slice(0, 1000)),
+      });
+      if (!r.ok) throw new Error('o tradutor respondeu ' + r.status);
+      const j = await r.json();
+      return { txt: (j[0] || []).map((x) => x[0]).join(''), de: j[2] };
+    };
+    try {
+      let r = await pede(tl || 'pt');
+      if (!tl && r.de === 'pt') { r = await pede('en'); tl = 'en'; }
+      const nome = (c) => (Object.entries(IDIOMAS).find(([, v]) => v === c) || [c])[0];
+      const fr = r.txt.trim();
+      iaMsg('ia', `🌐 **${nome(tl || 'pt')}** (de ${nome(r.de || '?')}):\n${fr}`,
+        { botoes: fr && fr.length <= 100 && !fr.startsWith(':') ? [{ rot: `💬 mandar no chat: “${fr}”`, a: 'falar', texto: fr }] : [] });
+    } catch (e) {
+      iaMsg('ia', 'Não consegui traduzir agora: ' + e.message);
     }
   }
   function iaAbre() {
@@ -9436,8 +9641,8 @@
     const st = ui.iapanel.querySelector('.iast');
     let sh = '';
     if (IA.run) sh += '⏳ pensando… (o ajudante pode pedir para você confirmar) ';
-    if (AC.pick) sh += '🖱 clique no mobi do autoclick ';
-    if (AC.on) sh += `🖱 autoclick: ${AC.feitos}${AC.vezes ? '/' + AC.vezes : ''} cliques `;
+    if (AC.pick) sh += { mobi: '🪑 clique no mobi do autoclick ', ponto: '📍 clique no ponto do jogo ', andar1: '🚶 clique no 1º quadrado ', andar2: '🚶 clique no 2º quadrado ' }[AC.pick] || '';
+    if (AC.on) sh += `🖱 autoclick: ${AC.feitos}${AC.vezes ? '/' + AC.vezes : ''}${AC.fora ? ` · ${AC.fora} fora do quarto` : ''} `;
     if (AC.on || AC.pick) sh += '<button data-a="iaParar">parar</button>';
     st.hidden = !sh;
     if (st.__last !== sh) { st.__last = sh; st.innerHTML = sh; }
@@ -9446,26 +9651,113 @@
     const h = IA.hist.map((m, i) => `<div class="iam ${m.de === 'eu' ? 'eu' : 'ia'}">${m.de === 'eu' ? esc(m.texto) : mdLeve(m.texto)}` +
       (m.notas || []).map((n) => `<div class="nota">${esc(n)}</div>`).join('') +
       ((m.botoes || []).length ? `<div class="acts">${m.botoes.map((b, j) => `<button data-a="iaAcao" data-m="${i}" data-i="${j}"${b.feito ? ' disabled' : ''}>${esc(b.feito ? '✓ mandei' : b.rot)}</button>`).join('')}</div>` : '') +
-      '</div>').join('') || '<div class="dim">Peça o que quiser: “traduz para o inglês: bem-vindo ao meu quarto”, “autoclick 20 vezes a cada 1 segundo”, ' +
-      '“liga o :up 2.5”, “como faço uma porta com senha?”. Também dá para escrever <b>ia: …</b> no chat do jogo.</div>';
+      '</div>').join('') || '<div class="dim">Peça o que quiser: “traduz para o inglês: bem-vindo ao meu quarto”, “autoclick”, ' +
+      '“up 2.5”, “como faço uma porta com senha?”. Também dá para escrever <b>ia: …</b> no chat do jogo. Respondo na hora, sem custo.</div>';
     if (box.__last !== h) { box.__last = h; box.innerHTML = h; box.scrollTop = box.scrollHeight; }
   }
 
-  // 🖱 Autoclick: usa (clica 2x) um mobi várias vezes. A pessoa escolhe o mobi clicando nele no jogo.
-  const AC = { on: false, pick: false, id: null, vezes: 0, feitos: 0, ms: 1000, gen: 0, room: null, inicio: 0 };
-  const AC_MIN_MS = 500, AC_MAX_MIN = 30;
-  function acPedirMobi(vezes, seg) {
-    if (!connected() || S.room.id == null) throw new Error('entre num quarto primeiro');
+  // 🖱 Autoclick em 4 jeitos: onde o mouse estiver, sempre no mesmo ponto, usar um mobi, ou andar entre 2 quadrados.
+  // O assistente pergunta o que falta (jeito, de quanto em quanto tempo, quantas vezes).
+  const MOUSE = { x: null, y: null, t: 0 };
+  const AC = { on: false, pick: false, modo: null, id: null, alvo: null, q1: null, q2: null, vezes: 0, feitos: 0, fora: 0, ms: 1000, gen: 0, room: null, inicio: 0 };
+  const ACW = { modo: null, ms: null, vezes: null, espera: null };
+  const AC_MODOS = { mouse: '🖱 onde o mouse estiver', ponto: '📍 sempre no mesmo ponto', mobi: '🪑 usar um mobi (o clique duplo)', andar: '🚶 andar entre 2 quadrados' };
+  const acMin = (modo) => (modo === 'mouse' || modo === 'ponto' ? 300 : 500);
+  const acSeg = (ms) => (ms >= 60000 && ms % 60000 === 0 ? `${ms / 60000} min` : ms < 1000 ? `${ms} ms` : `${cnFmt(ms / 1000)} s`);
+  function acTempo(t) { // "350 ms", "2,5 s", "2 min", "350s" → ms
+    const m = /(\d+(?:[.,]\d+)?)\s*(ms|milissegundos?|s\b|seg\w*|min\w*|h\b|horas?)?/.exec(t);
+    if (!m) return null;
+    const n = parseFloat(m[1].replace(',', '.'));
+    const u = m[2] || '';
+    if (/^ms|^mili/.test(u)) return Math.round(n);
+    if (/^min/.test(u)) return Math.round(n * 60000);
+    if (/^h/.test(u)) return Math.round(n * 3600000);
+    if (u) return Math.round(n * 1000);
+    return n >= 50 ? Math.round(n) : Math.round(n * 1000); // sem unidade: 350 = 350 ms, 5 = 5 s
+  }
+  function acVezesDe(t) {
+    if (/infinit|sempre|ate (eu )?(mandar )?parar|sem parar|sem fim|nao parar/.test(t)) return 0;
+    const m = /(\d+)\s*(vezes|x\b|cliques?)/.exec(t);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function acModoDe(t) {
+    if (/mouse|cursor|ponteiro|seta|onde (eu )?(estiver|estou|passar|apontar)/.test(t)) return 'mouse';
+    if (/mesmo (ponto|lugar)|ponto fixo|lugar fixo|posicao fixa|um ponto/.test(t)) return 'ponto';
+    if (/andar|anda\b|caminhar|anti.?(afk|ausente)|ausente|afk/.test(t)) return 'andar';
+    if (/mobi|usar|ligar e desligar|clique duplo|duplo/.test(t)) return 'mobi';
+    return null;
+  }
+  function acDoTexto(t) { // "autoclick a cada 350 ms onde o mouse estiver 100 vezes"
+    const resto = t.replace(/auto ?cli(ck|que)/, ' ');
+    const temNum = /a cada|cada|de \d|\d+\s*(ms|s\b|seg|min|h\b)/.test(resto);
+    acAssistente({ modo: acModoDe(resto), ms: temNum ? acTempo(resto.replace(/(\d+)\s*(vezes|x\b|cliques?)/, '')) : null, vezes: acVezesDe(resto) });
+  }
+  function acAssistente(o) {
+    Object.assign(ACW, { modo: null, ms: null, vezes: null, espera: null }, Object.fromEntries(Object.entries(o).filter(([, v]) => v != null && !Number.isNaN(v))));
+    acPergunta();
+  }
+  function acRespostaDigitada(t) {
+    if (ACW.espera === 'modo') { const md = acModoDe(t); if (!md) return false; ACW.modo = md; }
+    else if (ACW.espera === 'ms') { const ms = acTempo(t); if (ms == null) return false; ACW.ms = ms; }
+    else if (ACW.espera === 'vezes') { let v = acVezesDe(t); if (v == null) { const m = /^\s*(\d+)\s*$/.exec(t); v = m ? parseInt(m[1], 10) : null; } if (v == null) return false; ACW.vezes = v; }
+    else return false;
+    acPergunta();
+    return true;
+  }
+  function acPergunta() {
+    if (!ACW.modo) {
+      ACW.espera = 'modo';
+      iaMsg('ia', '🖱 **Autoclick**: como você quer?', { botoes: Object.entries(AC_MODOS).map(([v, rot]) => ({ rot, a: 'ac', k: 'modo', v })),
+        notas: ['mouse: clico no jogo onde o mouse estiver · ponto: você clica uma vez e eu repito ali · mobi: ligo/desligo um mobi · andar: o boneco vai e volta (não fica ausente)'] });
+      return;
+    }
+    if (ACW.ms == null) {
+      ACW.espera = 'ms';
+      const ops = ACW.modo === 'andar' ? [5000, 30000, 60000, 120000, 350000] : [350, 1000, 5000, 30000, 350000];
+      iaMsg('ia', `${AC_MODOS[ACW.modo]}: **de quanto em quanto tempo?**`, { botoes: ops.map((ms) => ({ rot: `⏱ a cada ${acSeg(ms)}`, a: 'ac', k: 'ms', v: ms })),
+        notas: ['ou digite, ex.: 500 ms · 2,5 s · 2 min'] });
+      return;
+    }
+    if (ACW.vezes == null) {
+      ACW.espera = 'vezes';
+      iaMsg('ia', `A cada ${acSeg(Math.max(acMin(ACW.modo), ACW.ms))}: **quantas vezes?**`, { botoes: [10, 50, 100, 500, 0].map((v) => ({ rot: v ? `${v} vezes` : '♾ até eu mandar parar', a: 'ac', k: 'vezes', v })),
+        notas: ['ou digite um número'] });
+      return;
+    }
+    ACW.espera = null;
+    try { acConfigura(ACW.modo, ACW.ms, ACW.vezes); } catch (e) { iaMsg('ia', '✗ ' + e.message); }
+  }
+  function acConfigura(modo, ms, vezes) {
+    if ((modo === 'mobi' || modo === 'andar') && (!connected() || S.room.id == null)) throw new Error('entre num quarto primeiro');
     acPara(null);
-    const n = Math.round(Number(vezes) || 0);
-    AC.vezes = Math.max(0, Math.min(5000, n));
-    const s = Number(String(seg == null ? 1 : seg).replace(',', '.'));
-    AC.ms = Math.max(AC_MIN_MS, Math.round((Number.isFinite(s) && s > 0 ? s : 1) * 1000));
-    AC.pick = true;
-    gameNotice('🖱 Autoclick: clique no mobi que eu devo clicar (o boneco não anda)');
+    AC.modo = modo;
+    AC.vezes = Math.max(0, Math.min(100000, Math.round(Number(vezes) || 0)));
+    AC.ms = Math.max(acMin(modo), Math.round(Number(ms) || 1000));
+    AC.alvo = null; AC.q1 = null; AC.q2 = null; AC.id = null;
+    const quanto = `${AC.vezes ? AC.vezes + ' vezes' : 'até você mandar parar'}, a cada ${acSeg(AC.ms)}`;
+    if (modo === 'mouse') {
+      iaMsg('ia', `🖱 Autoclick onde o mouse estiver: ${quanto}. Deixe o mouse em cima do quarto do jogo (fora do quarto eu não clico). ` +
+        'Para parar: **Esc**, “parar” aqui, ou o botão parar.');
+      acComeca();
+      return;
+    }
+    if (modo === 'ponto') { AC.pick = 'ponto'; iaMsg('ia', `📍 Clique uma vez no ponto do jogo onde eu devo clicar (${quanto}).`); renderIa(); return; }
+    if (modo === 'andar') { AC.pick = 'andar1'; gameNotice('🚶 Autoclick: clique no 1º quadrado (o boneco não anda)'); iaMsg('ia', `🚶 Clique no **1º quadrado** do chão e depois no **2º** (${quanto}).`); renderIa(); return; }
+    AC.pick = 'mobi';
+    gameNotice('🖱 Autoclick: clique no mobi que eu devo usar (o boneco não anda)');
+    iaMsg('ia', `🪑 Clique no mobi que eu devo usar (${quanto}).`);
     renderIa();
   }
+  // compatível com o pedido do Claude e os testes: usar um mobi
+  function acPedirMobi(vezes, seg) { acConfigura('mobi', (Number(String(seg == null ? 1 : seg).replace(',', '.')) || 1) * 1000, vezes); }
   function acTap(tap) {
+    if (AC.pick === 'andar1' || AC.pick === 'andar2') {
+      const q = { x: tap.x, y: tap.y };
+      if (AC.pick === 'andar1') { AC.q1 = q; AC.pick = 'andar2'; gameNotice(`🚶 1º quadrado: x=${q.x} y=${q.y}. Agora clique no 2º`); renderIa(); return; }
+      AC.q2 = q;
+      acComeca();
+      return;
+    }
     let id = tap.id;
     if (id == null) {
       const aqui = [...S.floor.values()].filter((o) => o.x === tap.x && o.y === tap.y).sort((a, b) => b.z - a.z);
@@ -9473,16 +9765,25 @@
       id = aqui[0].id;
     }
     if (!S.floor.has(id)) { gameNotice('🖱 Não achei esse mobi: clique de novo nele'); return; }
-    AC.pick = false;
     AC.id = id;
+    acComeca();
+  }
+  function acComeca() {
+    AC.pick = false;
     AC.on = true;
     AC.feitos = 0;
+    AC.fora = 0;
     AC.room = S.room.id;
     AC.inicio = Date.now();
     const gen = ++AC.gen;
-    const o = S.floor.get(id);
-    const nome = (describe('floor', o) || {}).name || 'mobi';
-    iaMsg('ia', `🖱 Autoclick em ${nome} (${o.x},${o.y}): ${AC.vezes ? AC.vezes + ' vezes' : 'até você mandar parar'}, a cada ${cnFmt(AC.ms / 1000)} s. Escreva “parar” para parar.`);
+    if (AC.modo === 'mobi') {
+      const o = S.floor.get(AC.id);
+      iaMsg('ia', `🪑 Autoclick em ${(describe('floor', o) || {}).name || 'mobi'} (${o.x},${o.y}): ${AC.vezes ? AC.vezes + ' vezes' : 'até você mandar parar'}, a cada ${acSeg(AC.ms)}. Esc ou “parar” para parar.`);
+    } else if (AC.modo === 'andar') {
+      iaMsg('ia', `🚶 Andando entre (${AC.q1.x},${AC.q1.y}) e (${AC.q2.x},${AC.q2.y}) a cada ${acSeg(AC.ms)}. Esc ou “parar” para parar.`);
+    } else if (AC.modo === 'ponto') {
+      iaMsg('ia', `📍 Clicando nesse ponto a cada ${acSeg(AC.ms)}. Esc ou “parar” para parar.`);
+    }
     acLoop(gen).catch((e) => acPara(e.message));
   }
   function acPara(motivo) {
@@ -9490,19 +9791,36 @@
     AC.on = false;
     AC.pick = false;
     AC.gen++;
+    ACW.espera = null;
     if (estava && motivo) iaMsg('ia', `🖱 Autoclick parado: ${motivo} (${AC.feitos} ${AC.feitos === 1 ? 'clique' : 'cliques'}).`);
     renderIa();
   }
+  // Clique de mentira no quarto do jogo (só no desenho do quarto: nunca em botões, janelas ou no catálogo).
+  function cliqueNoJogo(x, y) {
+    if (typeof document === 'undefined' || x == null || y == null) return false;
+    const el = document.elementFromPoint(x, y);
+    if (!el || el.tagName !== 'CANVAS') return false;
+    const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, screenX: x, screenY: y, button: 0, view: W };
+    el.dispatchEvent(new W.MouseEvent('mousedown', { ...base, buttons: 1 }));
+    el.dispatchEvent(new W.MouseEvent('mouseup', { ...base, buttons: 0 }));
+    el.dispatchEvent(new W.MouseEvent('click', { ...base, buttons: 0, detail: 1 }));
+    return true;
+  }
   async function acLoop(gen) {
     while (AC.on && AC.gen === gen) {
-      if (!connected() || S.room.id !== AC.room) { acPara('você saiu do quarto'); return; }
-      if (!S.floor.has(AC.id)) { acPara('o mobi saiu do quarto'); return; }
-      if (Date.now() - AC.inicio > AC_MAX_MIN * 60000) { acPara(`passou de ${AC_MAX_MIN} minutos`); return; }
+      const pacote = AC.modo === 'mobi' || AC.modo === 'andar';
+      if (pacote && (!connected() || S.room.id !== AC.room)) { acPara('você saiu do quarto'); return; }
+      if (AC.modo === 'mobi' && !S.floor.has(AC.id)) { acPara('o mobi saiu do quarto'); return; }
+      const maxMin = AC.ms < 1000 ? 30 : 180; // rápido: até 30 min; devagar: até 3 horas
+      if (Date.now() - AC.inicio > maxMin * 60000) { acPara(`passou de ${maxMin >= 60 ? maxMin / 60 + ' horas' : maxMin + ' minutos'}`); return; }
       const mudo = (S.mutedUntil || 0) - Date.now();
-      if (mudo > 0) { await sleep(Math.min(5000, mudo + 100)); continue; }
-      send(OUT.USE, (w) => w.int(AC.id).int(0));
-      AC.feitos++;
-      if (AC.feitos === 1 || AC.feitos % 5 === 0) renderIa();
+      if (pacote && mudo > 0) { await sleep(Math.min(5000, mudo + 100)); continue; }
+      let ok = true;
+      if (AC.modo === 'mobi') send(OUT.USE, (w) => w.int(AC.id).int(0));
+      else if (AC.modo === 'andar') { const q = AC.feitos % 2 ? AC.q2 : AC.q1; send(OUT.WALK, (w) => w.int(q.x).int(q.y)); }
+      else { const pt = AC.modo === 'ponto' ? AC.alvo : MOUSE; ok = cliqueNoJogo(pt && pt.x, pt && pt.y); }
+      if (ok) AC.feitos++; else AC.fora++;
+      if (AC.feitos === 1 || AC.feitos % 5 === 0 || !ok) renderIa();
       if (AC.vezes && AC.feitos >= AC.vezes) { acPara('terminei'); return; }
       await sleep(AC.ms);
     }
