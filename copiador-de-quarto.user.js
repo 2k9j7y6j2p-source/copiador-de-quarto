@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.37
+// @version      3.0.38
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -842,7 +842,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend"], "wired": ["criminoso", "@construtora", "halloween."], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma"], "wired": ["criminoso", "@construtora", "halloween."], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
