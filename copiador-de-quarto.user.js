@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.39
+// @version      3.0.40
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.36';
+  const VERSION = '3.0.40';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -842,7 +842,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma"], "wired": ["criminoso", "@construtora", "halloween.", "@construidora"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma"], "wired": ["criminoso", "@construtora", "halloween.", "construidora"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
@@ -1657,9 +1657,10 @@
     if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
     console.info(TAG, msg);
     if (ui) {
-      const pre = ui.root.querySelector('.log');
-      pre.textContent = S.log.join('\n');
-      pre.scrollTop = pre.scrollHeight;
+      ui.root.querySelectorAll('.log').forEach((pre) => { // o do Colar e o da janela Wired
+        pre.textContent = S.log.join('\n');
+        pre.scrollTop = pre.scrollHeight;
+      });
     }
   }
 
@@ -5976,15 +5977,31 @@
       background: rgba(75, 224, 143, .15); border-color: rgba(75, 224, 143, .5); color: #fff; text-decoration: none;
     }
     .wg h4, .wmview h4 { font-size: 13px; }
-    /* conta só de wired: só as abas Wired e Aprender */
-    .panel.so-wired .tabs button:not([data-t="wired"]):not([data-t="aprender"]), .panel.so-wired .tabs .more,
-    .panel.so-wired details.exp { display: none !important; }
     .cnview { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
     .cnview > * { flex-shrink: 0; }
     .cnview[hidden] { display: none !important; }
     /* Ajudante de construção: botão e janela próprios, acima do botão do copiador */
     .fab.fabcn { bottom: 134px; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
-    .panel.cnpanel { top: auto; bottom: 176px; width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 200px); }
+    .panel.cnpanel { top: auto; bottom: 214px; width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 238px); }
+    /* Wired: botão e janela próprios, fora do copiador (guia, pedir e montar, ler wired do quarto e aprender) */
+    .fab.fabw { bottom: 172px; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    .panel.wpanel { top: 60px; width: min(580px, calc(100vw - 24px)); max-height: calc(100vh - 80px); }
+    .wpanel .wtabs { padding-top: 8px; padding-bottom: 6px; }
+    .wguia { display: flex; flex-direction: column; overflow: auto; flex: 1; min-height: 80px; border-top: 1px solid var(--line); }
+    .wguia > * { flex-shrink: 0; }
+    .wguia[hidden] { display: none !important; }
+    .wguia .wfilter { width: 100%; box-sizing: border-box; }
+    .wperg { display: flex; flex-direction: column; overflow: auto; flex: 1; border-top: 1px solid var(--line); }
+    .wperg > * { flex-shrink: 0; }
+    .wperg[hidden] { display: none !important; }
+    .wperg textarea, .pergrow textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+    .pergrow { padding-bottom: 0; }
+    .pergout .pq { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); line-height: 1.5; }
+    .pergout .pq .q { color: var(--hi); font-weight: 600; margin-bottom: 4px; }
+    .pergout .pq code { font-size: 11px; }
+    .cnpanel .pergout { max-height: 260px; overflow: auto; }
+    .cnview.desligado .cncard.cnperg { opacity: 1; } /* a pergunta funciona com o modo construtor desligado */
+    .fab { touch-action: none; user-select: none; }
     .cnpanel .cnview { border-top: 0; padding-bottom: 12px; }
     .cncard { margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
     .cnrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 4px; }
@@ -6039,10 +6056,10 @@
     const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `
       <style>${CSS}</style>
-      <button class="fab" title="Copiador de Quarto"><span class="mkon" hidden>📍 marcando · </span>&gt;_ <span class="n">0</span></button>
-      <button class="fab fabcn" title="Ajudante de construção">🧰 Ajudante de construção</button>
+      <button class="fab" title="Copiador de Quarto (arraste para mudar de lugar)"><span class="mkon" hidden>📍 marcando · </span>&gt;_ <span class="n">0</span></button>
+      <button class="fab fabcn" title="Ajudante de construção (arraste para mudar de lugar)">🧰 Ajudante de construção</button>
       <div class="panel" hidden>
-        <header><span class="hd">&gt; copiador_de_quarto <span class="ver">v${VERSION}</span><span class="cur">▌</span></span><span class="sp"></span><span class="role"></span><button class="x lo" data-a="logout" hidden>[sair]</button><button class="x" data-a="close" title="Fechar">[x]</button></header>
+        <header title="arraste para mover · clique duplo: volta para o lugar de antes"><span class="hd">&gt; copiador_de_quarto <span class="ver">v${VERSION}</span><span class="cur">▌</span></span><span class="sp"></span><span class="role"></span><button class="x lo" data-a="logout" hidden>[sair]</button><button class="x" data-a="close" title="Fechar">[x]</button></header>
         <div class="login" hidden>
           <div class="lgbox">
             <div class="lgt">&gt; login</div>
@@ -6071,7 +6088,6 @@
           <div class="lgmsg"></div>
         </div>
         <div class="status"></div>
-        <div class="wmprompt" hidden></div>
         <details class="exp"><summary>⇩ exportar este quarto</summary>
           <div class="actions">
             <button class="primary" data-a="json">Baixar JSON</button>
@@ -6085,8 +6101,6 @@
         <div class="row2">
           <div class="tabs">
             <button data-t="paste" class="tab-paste" title="Colar no meu quarto" aria-selected="true">🏠 Colar</button>
-            <button data-t="wired">⚡ Wired</button>
-            <button data-t="aprender" title="Aprender wired junto">🎓 Aprender</button>
             <button data-t="build">🧱 Construções</button>
             <button class="more" type="button">mais ▸</button>
             <button data-t="floor" class="t2" title="Lista dos mobis do quarto">📦 Mobis</button>
@@ -6126,58 +6140,6 @@
           <div class="actions"><button class="primary" data-a="cdApply">aplicar o que o Claude ensinou</button><button data-a="cdNotes">notas</button></div>
           <div class="cdout lvpad"></div>
           <div class="cdnotes lvbox" hidden></div>
-        </div>
-        <div class="wmview" hidden>
-          <div class="lvpad wmtabs"><button data-a="wmSub" data-s="guia">📖 Guia</button> <button data-a="wmSub" data-s="montar">🧱 Pedir e montar</button>
-            <button data-a="wmSub" data-s="ler">🔎 Ler wired do quarto</button></div>
-          <div class="wmmontar">
-            <div class="lvpad"><b>O que você precisa no quarto?</b> <span class="wmcount dim"></span> <span class="dim">Escreva do seu jeito, ex.: “senha que leva para a sala vip”,
-              “boas-vindas”, “mobi que persegue”. Clique em <b>montar no quarto</b>, depois no quadrado e nos mobis que eu pedir.</span></div>
-            <div class="lvpad"><textarea data-o="wmAsk" rows="2" spellcheck="false" placeholder="ex.: quando falar :vip ir para a sala vip"></textarea></div>
-            <div class="lvpad wmgroups wmtabs"></div>
-            <div class="wmres lvpad"></div>
-            <div class="lvpad"><b>Não achou?</b> <span class="dim">Peça pela sua chave da API (precisa do ajudante “Copiador de Quarto – Claude” no Tampermonkey)
-              ou copie o pedido para o Claude e cole a resposta aqui: ela vira um sistema para montar.</span></div>
-            <div class="actions"><button class="primary" data-a="wmApi">🤖 pedir ao Claude pela API</button> <button data-a="wmClaude">copiar pedido para o Claude</button></div>
-            <div class="lvpad"><textarea data-o="wmJson" rows="2" spellcheck="false" placeholder="cole aqui a resposta do Claude"></textarea></div>
-            <div class="actions"><button class="primary" data-a="wmPaste">usar a resposta</button></div>
-          </div>
-          <div class="wmler" hidden>
-            <div class="lvpad dim">Abro cada wired do quarto como o clique duplo faz e mostro a configuração, pilha por pilha. Vou devagar (uns 2 por segundo)
-              para o hotel não travar. Funciona onde você pode abrir os wired.</div>
-            <div class="actions"><button class="primary" data-a="wmRead">ler os wired deste quarto</button> <span class="wmreadst dim"></span></div>
-            <div class="lvpad wmmap"><canvas class="wmcanvas"></canvas></div>
-            <div class="lvpad dim">🟧 pilha de wired · 🟩 já lida · contorno azul = escolhida · branco = a que você clicou · 🟦 mobis que os wired usam · 🟪 mobis de jogo (vão junto na cópia).
-              Clique numa pilha do mapa para ver a configuração e escolher.</div>
-            <div class="actions"><button data-a="wmSelAll">escolher todas</button><button data-a="wmSelNone">limpar</button>
-              <button class="primary" data-a="wmCopy" data-so="1">copiar só o sistema lido</button>
-              <button data-a="wmCopy">copiar com os mobis de jogo do quarto</button> <span class="wmcopyst dim"></span></div>
-            <div class="lvpad dim"><b>Só o sistema lido:</b> leva as pilhas escolhidas (e as que elas chamam), os mobis que os wired usam e selecionam
-              e o que está no mesmo quadrado deles (ex.: as munições em cima do piso verde). <b>Com os mobis de jogo:</b> leva também 🟪
-              placares, contadores e pisos de jogo do quarto que nenhum wired aponta.</div>
-            <div class="wmpick lvpad"></div>
-            <div class="lvpad"><b>Colar no seu quarto</b> <span class="wmcopyinfo dim"></span></div>
-            <div class="actions"><button class="primary" data-a="wmPasteCopy">colar as pilhas copiadas</button>
-              <button data-a="wmCfgLast">colar só as configurações</button></div>
-            <div class="lvpad dim"><b>Só as configurações:</b> não coloca nem compra nada; acha no seu quarto os wired iguais aos copiados
-              (mesmo tipo e mesma posição entre eles) e grava a configuração neles. Use quando você já tem as pilhas montadas.</div>
-            <div class="lvpad dim">Entre no seu quarto, clique em “colar” e depois no quadrado do canto de cima. Eu coloco os mobis e os wired
-              (comprando o que faltar) e programo cada wired com a configuração lida, trocando os mobis e as variáveis pelos novos.</div>
-            <details class="lvpad"><summary>todas as pilhas lidas</summary><div class="wmreadout"></div></details>
-          </div>
-        </div>
-        <div class="aprview" hidden>
-          <div class="lvpad"><b>🎓 Aprender wired junto</b> <span class="dim">Ligue e fique no quarto enquanto alguém monta: eu leio cada wired que aparece,
-            muda de lugar ou é salvo (como o clique duplo faz) e guardo a configuração de cada pilha, com o que mudou e quando. A cada minuto
-            releio todos, para pegar o que os outros mudaram.</span></div>
-          <div class="actions"><button class="primary" data-a="aprToggle">👀 aprender junto</button>
-            <button data-a="aprAgora">reler tudo agora</button>
-            <button data-a="aprGuardar">guardar em ⭐ PERSONALIZADOS</button>
-            <button data-a="aprCopiar">copiar o que aprendi</button></div>
-          <div class="lvpad aprst dim"></div>
-          <div class="lvpad"><b>O que mudou</b></div>
-          <div class="lvpad apreventos"></div>
-          <details class="lvpad"><summary>pilhas aprendidas</summary><div class="aprpilhas"></div></details>
         </div>
         <div class="buildview" hidden>
           <div class="lvpad"><b>Aprender uma construção</b> <span class="dim">Clique em <b>Iniciar</b>, monte no quarto do seu jeito e clique em
@@ -6296,8 +6258,78 @@
         </div>
         <footer></footer>
       </div>
+      <button class="fab fabw" title="Wired (arraste para mudar de lugar)">⚡ Wired</button>
+      <div class="panel wpanel" hidden>
+        <header class="whead" title="arraste para mover · clique duplo: volta para o lugar de antes"><span class="hd">⚡ Wired</span><span class="sp"></span><button class="x" data-a="wmFechar" title="Fechar">[x]</button></header>
+        <div class="lvpad wmtabs wtabs"><button data-a="wmSub" data-s="guia">📖 Guia</button> <button data-a="wmSub" data-s="montar">🧱 Pedir e montar</button>
+          <button data-a="wmSub" data-s="ler">🔎 Ler wired do quarto</button> <button data-a="wmSub" data-s="aprender">🎓 Aprender</button>
+          <button data-a="wmSub" data-s="perg">❓ Perguntar</button></div>
+        <div class="wmprompt" hidden></div>
+        <div class="wguia">
+          <div class="lvpad"><input class="wfilter" placeholder="Filtrar o guia…" spellcheck="false"></div>
+          <div class="wbody lvpad"></div>
+        </div>
+          <div class="wmview" hidden>
+            <div class="wmmontar">
+              <div class="lvpad"><b>O que você precisa no quarto?</b> <span class="wmcount dim"></span> <span class="dim">Escreva do seu jeito, ex.: “senha que leva para a sala vip”,
+                “boas-vindas”, “mobi que persegue”. Clique em <b>montar no quarto</b>, depois no quadrado e nos mobis que eu pedir.</span></div>
+              <div class="lvpad"><textarea data-o="wmAsk" rows="2" spellcheck="false" placeholder="ex.: quando falar :vip ir para a sala vip"></textarea></div>
+              <div class="lvpad wmgroups wmtabs"></div>
+              <div class="wmres lvpad"></div>
+              <div class="lvpad"><b>Não achou?</b> <span class="dim">Peça pela sua chave da API (precisa do ajudante “Copiador de Quarto – Claude” no Tampermonkey)
+                ou copie o pedido para o Claude e cole a resposta aqui: ela vira um sistema para montar.</span></div>
+              <div class="actions"><button class="primary" data-a="wmApi">🤖 pedir ao Claude pela API</button> <button data-a="wmClaude">copiar pedido para o Claude</button></div>
+              <div class="lvpad"><textarea data-o="wmJson" rows="2" spellcheck="false" placeholder="cole aqui a resposta do Claude"></textarea></div>
+              <div class="actions"><button class="primary" data-a="wmPaste">usar a resposta</button></div>
+            </div>
+            <div class="wmler" hidden>
+              <div class="lvpad dim">Abro cada wired do quarto como o clique duplo faz e mostro a configuração, pilha por pilha. Vou devagar (uns 2 por segundo)
+                para o hotel não travar. Funciona onde você pode abrir os wired.</div>
+              <div class="actions"><button class="primary" data-a="wmRead">ler os wired deste quarto</button> <span class="wmreadst dim"></span></div>
+              <div class="lvpad wmmap"><canvas class="wmcanvas"></canvas></div>
+              <div class="lvpad dim">🟧 pilha de wired · 🟩 já lida · contorno azul = escolhida · branco = a que você clicou · 🟦 mobis que os wired usam · 🟪 mobis de jogo (vão junto na cópia).
+                Clique numa pilha do mapa para ver a configuração e escolher.</div>
+              <div class="actions"><button data-a="wmSelAll">escolher todas</button><button data-a="wmSelNone">limpar</button>
+                <button class="primary" data-a="wmCopy" data-so="1">copiar só o sistema lido</button>
+                <button data-a="wmCopy">copiar com os mobis de jogo do quarto</button> <span class="wmcopyst dim"></span></div>
+              <div class="lvpad dim"><b>Só o sistema lido:</b> leva as pilhas escolhidas (e as que elas chamam), os mobis que os wired usam e selecionam
+                e o que está no mesmo quadrado deles (ex.: as munições em cima do piso verde). <b>Com os mobis de jogo:</b> leva também 🟪
+                placares, contadores e pisos de jogo do quarto que nenhum wired aponta.</div>
+              <div class="wmpick lvpad"></div>
+              <div class="lvpad"><b>Colar no seu quarto</b> <span class="wmcopyinfo dim"></span></div>
+              <div class="actions"><button class="primary" data-a="wmPasteCopy">colar as pilhas copiadas</button>
+                <button data-a="wmCfgLast">colar só as configurações</button></div>
+              <div class="lvpad dim"><b>Só as configurações:</b> não coloca nem compra nada; acha no seu quarto os wired iguais aos copiados
+                (mesmo tipo e mesma posição entre eles) e grava a configuração neles. Use quando você já tem as pilhas montadas.</div>
+              <div class="lvpad dim">Entre no seu quarto, clique em “colar” e depois no quadrado do canto de cima. Eu coloco os mobis e os wired
+                (comprando o que faltar) e programo cada wired com a configuração lida, trocando os mobis e as variáveis pelos novos.</div>
+              <details class="lvpad"><summary>todas as pilhas lidas</summary><div class="wmreadout"></div></details>
+            </div>
+          </div>
+          <div class="aprview" hidden>
+            <div class="lvpad"><b>🎓 Aprender wired junto</b> <span class="dim">Ligue e fique no quarto enquanto alguém monta: eu leio cada wired que aparece,
+              muda de lugar ou é salvo (como o clique duplo faz) e guardo a configuração de cada pilha, com o que mudou e quando. A cada minuto
+              releio todos, para pegar o que os outros mudaram.</span></div>
+            <div class="actions"><button class="primary" data-a="aprToggle">👀 aprender junto</button>
+              <button data-a="aprAgora">reler tudo agora</button>
+              <button data-a="aprGuardar">guardar em ⭐ PERSONALIZADOS</button>
+              <button data-a="aprCopiar">copiar o que aprendi</button></div>
+            <div class="lvpad aprst dim"></div>
+            <div class="lvpad"><b>O que mudou</b></div>
+            <div class="lvpad apreventos"></div>
+            <details class="lvpad"><summary>pilhas aprendidas</summary><div class="aprpilhas"></div></details>
+          </div>
+        <div class="wperg" hidden>
+          <div class="lvpad"><b>❓ Pergunte ao Claude</b> <span class="dim">Dúvidas sobre o plugin, os wired e como construir no Habblet.
+            Usa o ajudante “Copiador de Quarto – Claude” (a chave da API fica nele, no Tampermonkey).</span></div>
+          <div class="lvpad"><textarea data-o="pergTxt" rows="3" spellcheck="false" placeholder="ex.: como faço uma porta que só abre com senha?"></textarea></div>
+          <div class="actions"><button class="primary" data-a="wmPergunta">perguntar ao Claude</button> <span class="pergst dim"></span></div>
+          <div class="lvpad pergout"></div>
+        </div>
+        <pre class="log wlog"></pre>
+      </div>
       <div class="panel cnpanel" hidden>
-        <header class="cnhead"><span class="hd">🧰 Ajudante de construção</span><span class="sp"></span><button class="x" data-a="cnFechar" title="Fechar">[x]</button></header>
+        <header class="cnhead" title="arraste para mover · clique duplo: volta para o lugar de antes"><span class="hd">🧰 Ajudante de construção</span><span class="sp"></span><button class="x" data-a="cnFechar" title="Fechar">[x]</button></header>
           <div class="cnview">
             <div class="lvpad"><span class="dim">Mude o número e eu mando o comando no jogo por você: nada de digitar.
               Use ▲ ▼, digite o número ou as setinhas do teclado.</span></div>
@@ -6349,6 +6381,12 @@
               <div class="verdinho"><b>⚡ Atalhos</b></div>
               <div class="cnrow"><button data-a="cnHideWired">mostrar / esconder os wired (:hidewired)</button></div>
             </div>
+            <div class="cncard cnperg">
+              <div class="verdinho"><b>❓ Dúvida? Pergunte ao Claude</b></div>
+              <div class="cnrow pergrow"><textarea data-o="pergTxt" rows="2" spellcheck="false" placeholder="ex.: como coloco um mobi em cima do outro?"></textarea></div>
+              <div class="cnrow"><button class="primary" data-a="cnPergunta">perguntar</button> <span class="pergst dim"></span></div>
+              <div class="pergout"></div>
+            </div>
           </div>
       </div>
       <input type="file" class="file" accept=".json,.txt,application/json,text/plain" hidden>
@@ -6356,8 +6394,18 @@
     document.documentElement.appendChild(host);
 
     const $ = (sel) => root.querySelector(sel);
-    ui = { root, host, fab: $('.fab'), panel: $('.panel'), fabcn: $('.fabcn'), cnpanel: $('.cnpanel'), tab: 'paste', filter: '' };
+    ui = { root, host, fab: $('.fab'), panel: $('.panel'), fabcn: $('.fabcn'), cnpanel: $('.cnpanel'), fabw: $('.fabw'), wpanel: $('.wpanel'),
+      tab: 'paste', filter: '', wsub: 'guia', wfilter: '' };
+    ui.fabw.addEventListener('click', () => {
+      if (ui.fabw.__arrastou) { ui.fabw.__arrastou = false; return; }
+      ui.wpanel.hidden = !ui.wpanel.hidden;
+      if (!ui.wpanel.hidden) root.appendChild(ui.wpanel); // fica por cima das outras janelas
+      renderW();
+    });
+    for (const t of ['keydown', 'keyup', 'keypress']) ui.wpanel.addEventListener(t, (e) => e.stopPropagation());
+    $('.wfilter').addEventListener('input', (e) => { ui.wfilter = e.target.value.trim().toLowerCase(); renderW(); });
     ui.fabcn.addEventListener('click', () => {
+      if (ui.fabcn.__arrastou) { ui.fabcn.__arrastou = false; return; }
       ui.cnpanel.hidden = !ui.cnpanel.hidden;
       if (!ui.cnpanel.hidden) root.appendChild(ui.cnpanel); // fica por cima do painel do copiador
       renderCn();
@@ -6365,6 +6413,7 @@
     for (const t of ['keydown', 'keyup', 'keypress']) ui.cnpanel.addEventListener(t, (e) => e.stopPropagation());
 
     ui.fab.addEventListener('click', () => {
+      if (ui.fab.__arrastou) { ui.fab.__arrastou = false; return; }
       ui.panel.hidden = !ui.panel.hidden;
       render();
     });
@@ -6573,29 +6622,72 @@
       if (a && !a.disabled) action(a.dataset.a, a);
     });
 
-    makeDraggable(ui.panel, $('header'));
-    makeDraggable(ui.cnpanel, $('.cnhead'));
+    makeDraggable(ui.panel, $('header'), 'copiador');
+    makeDraggable(ui.cnpanel, $('.cnhead'), 'ajudante');
+    makeDraggable(ui.wpanel, $('.whead'), 'wired');
+    makeDraggable(ui.fab, ui.fab, 'b-copiador', true);
+    makeDraggable(ui.fabcn, ui.fabcn, 'b-ajudante', true);
+    makeDraggable(ui.fabw, ui.fabw, 'b-wired', true);
     setTimeout(showWelcome, 0); // se o nick já chegou antes do painel
     vigiaAmigos();
-    if (S.log.length) $('.log').textContent = S.log.join('\n');
+    if (S.log.length) root.querySelectorAll('.log').forEach((pre) => { pre.textContent = S.log.join('\n'); });
     syncHeightInputs();
     render();
   }
 
-  function makeDraggable(panel, handle) {
+  // Arrastar pela tela: as janelas pelo cabeçalho, os botões por eles mesmos. A posição fica guardada neste navegador;
+  // clique duplo no cabeçalho volta a janela para o lugar de antes.
+  const POS_KEY = 'copiadorDeQuarto.posicoes.v1';
+  const POS = store.get(POS_KEY) || {};
+  const arrastaveis = [];
+  function poeEm(el, l, t, botao) {
+    const r = el.getBoundingClientRect();
+    const w = botao ? (r.width || 40) : 60, h = botao ? (r.height || 30) : 40;
+    el.style.left = Math.round(Math.max(0, Math.min(window.innerWidth - w, l))) + 'px';
+    el.style.top = Math.round(Math.max(0, Math.min(window.innerHeight - h, t))) + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    el.dataset.movido = '1';
+  }
+  function makeDraggable(panel, handle, key, botao) {
+    arrastaveis.push([panel, botao]);
+    if (key && POS[key]) poeEm(panel, POS[key].l, POS[key].t, botao);
     handle.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button')) return;
+      if (e.button !== 0) return;
+      if (!botao && e.target.closest('button, input, textarea, select, label')) return;
       const r = panel.getBoundingClientRect();
-      const dx = e.clientX - r.left, dy = e.clientY - r.top;
+      const sx = e.clientX, sy = e.clientY, dx = sx - r.left, dy = sy - r.top;
+      let moveu = false;
       const move = (ev) => {
-        panel.style.left = Math.max(0, Math.min(window.innerWidth - 60, ev.clientX - dx)) + 'px';
-        panel.style.top = Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - dy)) + 'px';
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
+        if (!moveu && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 6) return; // clique, não arraste
+        moveu = true;
+        poeEm(panel, ev.clientX - dx, ev.clientY - dy, botao);
       };
-      const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+      const up = () => {
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', up);
+        if (!moveu) return;
+        if (botao) panel.__arrastou = true; // o clique que vem depois de soltar não abre nem fecha a janela
+        if (key) { POS[key] = { l: parseInt(panel.style.left, 10), t: parseInt(panel.style.top, 10) }; store.set(POS_KEY, POS); }
+      };
       addEventListener('pointermove', move);
       addEventListener('pointerup', up);
+    });
+    if (!botao && key) {
+      handle.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button')) return;
+        delete POS[key];
+        store.set(POS_KEY, POS);
+        for (const k of ['left', 'top', 'right', 'bottom']) panel.style[k] = '';
+        delete panel.dataset.movido;
+      });
+    }
+  }
+  if (typeof addEventListener === 'function') {
+    addEventListener('resize', () => { // a tela diminuiu: traz de volta o que ficou para fora
+      for (const [el, botao] of arrastaveis) {
+        if (el.dataset.movido) poeEm(el, parseFloat(el.style.left) || 0, parseFloat(el.style.top) || 0, botao);
+      }
     });
   }
 
@@ -6772,8 +6864,15 @@
       render();
       return;
     }
-    if (a === 'wmSub') { ui.wsub = el.dataset.s; render(); return; }
-    if (a === 'wcat') { ui.wcat = el.dataset.c; render(); return; }
+    if (a === 'wmSub') { ui.wsub = el.dataset.s; renderW(); return; }
+    if (a === 'wmFechar') { ui.wpanel.hidden = true; return; }
+    if (a === 'wmPergunta' || a === 'cnPergunta') {
+      const box = el.closest('.wperg, .cncard');
+      const txt = box && box.querySelector('[data-o="pergTxt"]');
+      perguntar(txt ? txt.value : '').catch((e) => { PERG.run = false; PERG.msg = ''; toast('Erro: ' + e.message, true); renderPerg(); });
+      return;
+    }
+    if (a === 'wcat') { ui.wcat = el.dataset.c; renderW(); return; }
     if (a === 'wmg') { ui.wmg = el.dataset.g; renderWm(); return; }
     if (a === 'wmSelAll') { ui.wsel = new Set(wiredPiles().keys()); renderWm(); return; }
     if (a === 'wmSelNone') { ui.wsel = new Set(); renderWm(); return; }
@@ -8720,6 +8819,7 @@
   }
   function renderCn() {
     if (!ui || !ui.cnpanel || ui.cnpanel.hidden) return;
+    renderPerg();
     const $ = (q) => ui.root.querySelector(q);
     $('[data-o="cnModo"]').checked = CN.modo;
     { const l = $('[data-o="cnLote"]'); if (l && ui.root.activeElement !== l) l.value = CNC_LOTE; }
@@ -8771,7 +8871,7 @@
     if (APR.eventos.length > 200) APR.eventos.length = 200;
   }
   let aprRenderT = null;
-  const aprRenderSoon = () => { clearTimeout(aprRenderT); aprRenderT = setTimeout(() => { if (ui && ui.tab === 'aprender') renderApr(); }, 250); };
+  const aprRenderSoon = () => { clearTimeout(aprRenderT); aprRenderT = setTimeout(() => { if (ui && ui.wpanel && !ui.wpanel.hidden && ui.wsub === 'aprender') renderApr(); }, 250); };
   async function aprLer() {
     if (APR.lendo) return;
     APR.lendo = true;
@@ -8975,21 +9075,29 @@
       if (f) { API.esperando.delete(d.id); f(d); }
     });
   }
-  async function wmAskApi() {
-    const ask = String(ui.wmAsk || '').trim();
-    if (!ask) { toast('Escreva o pedido na caixa de cima primeiro', true); return; }
-    if (API.run) { toast('Já tem um pedido indo para o Claude: espere a resposta'); return; }
+  const SEM_AJUDANTE = 'Instale o ajudante “Copiador de Quarto – Claude” no Tampermonkey (link no README do GitHub) e recarregue o hotel';
+  async function apiPronto() {
     if (!API.pronto) { W.document.dispatchEvent(new W.CustomEvent('copiador-claude:ola')); await sleep(700); }
-    if (!API.pronto) { toast('Instale o ajudante “Copiador de Quarto – Claude” no Tampermonkey (link no README do GitHub) e recarregue o hotel', true); return; }
+    return API.pronto;
+  }
+  // Manda um pedido para o ajudante e espera a resposta ({ok, texto} ou {ok:false, erro}).
+  function apiPedir(pedido, sistema, texto) {
     const id = `p${Date.now()}-${++API.n}`;
     const resp = new Promise((resolve) => {
       API.esperando.set(id, resolve);
       setTimeout(() => { if (API.esperando.delete(id)) resolve({ ok: false, erro: 'o ajudante não respondeu em 6 minutos' }); }, 360000);
     });
+    W.document.dispatchEvent(new W.CustomEvent('copiador-claude:pedido', { detail: JSON.stringify({ id, pedido, sistema, texto }) }));
+    return resp;
+  }
+  async function wmAskApi() {
+    const ask = String(ui.wmAsk || '').trim();
+    if (!ask) { toast('Escreva o pedido na caixa de cima primeiro', true); return; }
+    if (API.run) { toast('Já tem um pedido indo para o Claude: espere a resposta'); return; }
+    if (!(await apiPronto())) { toast(SEM_AJUDANTE, true); return; }
     API.run = true;
     toast('Pedido indo para o Claude: confirme na janela do navegador e espere 1 ou 2 minutos');
-    W.document.dispatchEvent(new W.CustomEvent('copiador-claude:pedido', { detail: JSON.stringify({ id, pedido: ask, sistema: API_SISTEMA, texto: wmClaudeText(ask) }) }));
-    const r = await resp;
+    const r = await apiPedir(ask, API_SISTEMA, wmClaudeText(ask));
     API.run = false;
     if (!r.ok) { if (r.erro !== 'cancelado') toast('Claude: ' + r.erro, true); return; }
     try {
@@ -9004,6 +9112,84 @@
       toast('A resposta veio, mas não deu para usar: ' + e.message, true);
     }
     renderWm();
+  }
+  // ❓ Perguntar: dúvidas de quem usa o plugin, respondidas pelo Claude através do ajudante (a chave fica nele).
+  const PERG_KEY = 'copiadorDeQuarto.perguntas.v1';
+  const PERG = { run: false, msg: '', hist: (store.get(PERG_KEY) || []).slice(0, 8) };
+  const PERG_SISTEMA = 'Você é o ajudante do plugin “Assistente de Construção” (Copiador de Quarto), um script do Tampermonkey para o ' +
+    'Habblet, um hotel virtual em pixel art (cliente Nitro). Responda dúvidas de quem usa o plugin e de quem constrói ou monta wired no ' +
+    'Habblet. Escreva em português do Brasil, simples e curto (no máximo uns 10 linhas), com passos numerados quando for um passo a passo. ' +
+    'Use os nomes que aparecem no plugin e no jogo. Fale só das partes que a conta da pessoa tem. Não invente comandos, botões nem wired: ' +
+    'se não souber, diga que não sabe e indique falar com vinipetter no Discord. Responda só a dúvida, sem conversa fora do assunto.';
+  const PERG_MANUAL = [
+    'Como o plugin funciona (botões no canto da tela; dá para arrastar os botões e as janelas pelo cabeçalho):',
+    '- 🧰 Ajudante de construção: ligue a caixa “Modo construtor ligado” no topo (desligada, nada é mandado). Altura do mobi (:up): setas ▲ ▼, ' +
+      'passo de 0.01 a 1, de −25 a 63, “desligar” manda :up. 📍 Altura do clique: é só clicar no chão e o mobi vai na altura do quadrado. ' +
+      '“Em cima do mobi clicado” põe o próximo mobi em cima do mobi em que você clicou; “mesma altura do mobi clicado” deixa na mesma altura. ' +
+      'Estado do mobi (:state 0 a 99) e Girar o mobi (:spin 0, 2, 4 ou 6). Compra automática: quando acaba um mobi e você clica no jogo, ' +
+      'compra mais (a quantidade escolhida). Atalho :hidewired mostra ou esconde os wired.',
+    '- ⚡ Wired: 📖 Guia (velocidades, construções prontas, todos os wired do Habblet e o Super Wired); 🧱 Pedir e montar (escreva o que ' +
+      'precisa, escolha um sistema, clique em montar no quarto, depois no quadrado e nos mobis que ele pedir; dá para pedir ao Claude pela API); ' +
+      '🔎 Ler wired do quarto (lê cada wired, mostra o mapa das pilhas, copia só o sistema ou com os mobis de jogo e cola as pilhas no seu quarto, ' +
+      'ou só as configurações em pilhas iguais); 🎓 Aprender (lê os wired enquanto alguém monta e guarda em ⭐ PERSONALIZADOS); ❓ Perguntar.',
+    '- >_ Copiador de Quarto (só contas com tudo): 🏠 Colar (guardar o quarto como cópia, abrir JSON, “Colar tudo”: ver o que falta, comprar e ' +
+      'colocar cada mobi no lugar, com altura, giro e estado), 🧱 Construções (gravar e repetir uma construção), e em “mais”: Mobis, Piso ' +
+      '(alturas do piso, lajotas andáveis, código do floor), Catálogo, Compras, Parede, Floor e Anticópia.',
+    '- Configurar um wired no jogo: coloque no quarto, clique 2x nele, escolha os mobis clicando neles no quarto e salve.'];
+  const PERG_WIRED = /wired|wf_|ativador|gatilho|efeito|condi[cç]|seletor|pilha|sinal|antena|vari[aá]ve|placar|contador|teleport|senha|keybind|repetir|batida|super|dispar|caixa|bot[aã]o|porta|jogo/i;
+  const NIVEL_TXT = { total: 'tudo (Copiador, Wired e Ajudante)', wired: 'só o ⚡ Wired e o 🧰 Ajudante de construção', construcao: 'só o 🧰 Ajudante de construção' };
+  function pergTexto(q) {
+    const L = ['# Dúvida de quem usa o plugin', '', `A conta da pessoa tem: ${NIVEL_TXT[S.nivel] || NIVEL_TXT.total}.`, '', ...PERG_MANUAL, ''];
+    if (PERG_WIRED.test(q) && S.nivel !== 'construcao') {
+      const G = WIRED_GUIDE;
+      L.push(...WM_REGRAS, '', 'Wired do Habblet (classname — tipo nome: o que faz · como usar):');
+      for (const [k, n, c, d, u] of G.itens) L.push(`${c} — ${k} ${n}: ${d} · ${u}`);
+      L.push('', 'Velocidades (wired, classname, mais rápido, mais lento, passo):');
+      for (const v of G.velocidades) L.push(v.slice(0, 5).join(' · '));
+      L.push('', 'Super Wired (comando: o que faz):');
+      for (const [k, gs] of Object.entries(G.super)) for (const [g, cs] of gs) for (const [c, d] of cs) L.push(`${k}/${g}: ${c} — ${d}`);
+      L.push('');
+    }
+    L.push('## Dúvida', q);
+    return L.join('\n');
+  }
+  // Markdown simples da resposta: negrito, código, listas e títulos.
+  function mdLeve(t) {
+    return esc(t).split('\n').map((l) => l
+      .replace(/^#{1,6}\s+(.*)$/, '<b>$1</b>')
+      .replace(/^\s*[-*]\s+/, '• ')
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')).join('<br>');
+  }
+  function renderPerg() {
+    if (!ui) return;
+    const st = PERG.run ? `⏳ ${PERG.msg || 'esperando o Claude…'}` : '';
+    ui.root.querySelectorAll('.pergst').forEach((x) => { x.textContent = st; });
+    ui.root.querySelectorAll('[data-a="wmPergunta"], [data-a="cnPergunta"]').forEach((b) => { b.disabled = PERG.run; });
+    const h = PERG.hist.map((x) => `<div class="pq"><div class="q">❓ ${esc(x.q)}</div>${mdLeve(x.a)}</div>`).join('') ||
+      '<div class="dim">As respostas aparecem aqui. Cada pergunta passa pela confirmação do ajudante do Claude (é cobrada na chave da API dele).</div>';
+    ui.root.querySelectorAll('.pergout').forEach((box) => { if (box.__last !== h) { box.__last = h; box.innerHTML = h; } });
+  }
+  async function perguntar(q) {
+    q = String(q || '').trim();
+    if (!q) { toast('Escreva a sua dúvida primeiro', true); return; }
+    if (PERG.run || API.run) { toast('Já tem uma pergunta indo para o Claude: espere a resposta'); return; }
+    if (!(await apiPronto())) { toast(SEM_AJUDANTE, true); return; }
+    PERG.run = true;
+    PERG.msg = 'confirme na janela do navegador e espere a resposta';
+    renderPerg();
+    try {
+      const r = await apiPedir(q, PERG_SISTEMA, pergTexto(q));
+      if (!r.ok) { if (r.erro !== 'cancelado') toast('Claude: ' + r.erro, true); return; }
+      PERG.hist.unshift({ q, a: String(r.texto).trim(), t: Date.now() });
+      PERG.hist = PERG.hist.slice(0, 8);
+      store.set(PERG_KEY, PERG.hist);
+      ui.root.querySelectorAll('[data-o="pergTxt"]').forEach((x) => { x.value = ''; });
+    } finally {
+      PERG.run = false;
+      PERG.msg = '';
+      renderPerg();
+    }
   }
   function wmApplyJson(text) {
     const m = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -9046,14 +9232,40 @@
         `<div class="actions">${list.length ? '<button data-a="wmUndo">desfazer o último</button>' : ''}` +
         `${n === 1 || n === 'area' ? '' : `<button class="primary" data-a="wmDone"${list.length ? '' : ' disabled'}>pronto</button>`}<button data-a="wmCancel">cancelar</button></div>`;
     } else if (WM.step === 'busy') {
-      h = '<b>⏳ montando e programando…</b> <span class="dim">o andamento aparece na aba Colar</span>';
+      h = '<b>⏳ montando e programando…</b> <span class="dim">o andamento aparece aqui embaixo</span> <button class="danger" data-a="stop">parar</button>';
     }
     box.hidden = !h;
     if (box.__last !== h) { box.__last = h; box.innerHTML = h; }
   }
 
+  // Janela ⚡ Wired (fora do copiador): guia, pedir e montar, ler wired do quarto e aprender.
+  function renderW() {
+    if (!ui || !ui.wpanel) return;
+    renderPrompt();
+    if (ui.wpanel.hidden) return;
+    const $ = (sel) => ui.root.querySelector(sel);
+    if (!['guia', 'montar', 'ler', 'aprender', 'perg'].includes(ui.wsub)) ui.wsub = 'guia';
+    const sub = ui.wsub;
+    ui.wpanel.querySelectorAll('.wtabs [data-s]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.s === sub)));
+    $('.wguia').hidden = sub !== 'guia';
+    $('.wmview').hidden = sub !== 'montar' && sub !== 'ler';
+    $('.aprview').hidden = sub !== 'aprender';
+    $('.wperg').hidden = sub !== 'perg';
+    if (sub === 'perg') {
+      renderPerg();
+    } else if (sub === 'guia') {
+      const box = $('.wbody');
+      const h = wiredHtml(ui.wfilter);
+      if (box.__last !== h) { const sc = $('.wguia').scrollTop; box.__last = h; box.innerHTML = h; $('.wguia').scrollTop = sc; }
+    } else if (sub === 'aprender') {
+      renderApr();
+    } else {
+      renderWm();
+    }
+  }
+
   function renderWm() {
-    if (!ui || ui.tab !== 'wired' || !ui.wsub || ui.wsub === 'guia') return;
+    if (!ui || !ui.wpanel || ui.wpanel.hidden || (ui.wsub !== 'montar' && ui.wsub !== 'ler')) return;
     const $ = (sel) => ui.root.querySelector(sel);
     $('.wmmontar').hidden = ui.wsub !== 'montar';
     $('.wmler').hidden = ui.wsub !== 'ler';
@@ -9262,9 +9474,7 @@
         sup.map(([k, gs]) => `<div class="wgc"><b>${k === 'efeito' ? 'Efeito' : 'Condição'}</b>` +
           gs.map(([g, cs]) => `<div class="dim">${esc(g)}</div><ul>${cs.map(([c, d]) => `<li><code>${esc(c)}</code> ${esc(d)}</li>`).join('')}</ul>`).join('') + '</div>').join('');
     }
-    return '<div class="wg"><div class="wmtabs"><button data-a="wmSub" data-s="guia" aria-selected="true">📖 Guia</button> ' +
-      '<button data-a="wmSub" data-s="montar">🧱 Pedir e montar</button> <button data-a="wmSub" data-s="ler">🔎 Ler wired do quarto</button></div>' +
-      '<div class="dim">Regra de ouro: um ativador e os efeitos no mesmo quadrado; condições em cima só deixam rodar se a regra vale; ' +
+    return '<div class="wg"><div class="dim">Regra de ouro: um ativador e os efeitos no mesmo quadrado; condições em cima só deixam rodar se a regra vale; ' +
       'seletores escolhem em quem o efeito age (no efeito: "Mostrar configurações avançadas" → fonte = do seletor). ' +
       'Para configurar qualquer wired: coloque no quarto e clique 2x nele; mobis você escolhe clicando neles no quarto; depois salve.</div>' +
       tabs + (h || '<div class="empty">Nada encontrado com esse filtro.</div>') + '</div>';
@@ -9654,11 +9864,17 @@
     ui.root.querySelector('.mkon').hidden = S.markMode !== 'game';
     ui.root.querySelector('.mkon').textContent = S.lvPick.size ? `📍 ${S.lvPick.size} · ` : '📍 marcador · ';
     // conta só do ajudante de construção: o copiador some e fica só o botão do ajudante
+    // conta só de wired: o copiador some e ficam os botões do Wired e do ajudante
     const soCn = S.nivel === 'construcao';
-    ui.fab.hidden = soCn;
-    if (soCn) ui.panel.hidden = true;
-    ui.fabcn.style.bottom = soCn ? '96px' : '';
+    const soW = S.nivel === 'wired';
+    ui.fab.hidden = soCn || soW;
+    if (soCn || soW) ui.panel.hidden = true;
+    ui.fabw.hidden = soCn;
+    if (soCn) ui.wpanel.hidden = true;
+    if (!ui.fabcn.dataset.movido) ui.fabcn.style.bottom = soCn || soW ? '96px' : '';
+    if (!ui.fabw.dataset.movido) ui.fabw.style.bottom = soW ? '134px' : '';
     renderCn(); // a janela do ajudante se atualiza junto (só faz algo se estiver aberta)
+    renderW(); // e a do Wired
     if (ui.panel.hidden) return;
 
     const s = snapshot();
@@ -9701,7 +9917,7 @@
     for (const sel of ['.panel > .status', '.panel > .exp', '.panel > .row2']) ui.root.querySelector(sel).hidden = !logged;
     ui.root.querySelector('.login').hidden = logged;
     if (!logged) {
-      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview', '.wmview', '.aprview']) ui.root.querySelector(sel).hidden = true;
+      for (const sel of ['.body', '.paste', '.levelview', '.ceoview', '.cdview', '.buildview']) ui.root.querySelector(sel).hidden = true;
       renderLogin();
       return;
     }
@@ -9711,19 +9927,9 @@
     const isCeo = ui.tab === 'ceo';
     const isCd = ui.tab === 'claude';
     const isBuild = ui.tab === 'build';
-    const isWm = ui.tab === 'wired' && !!ui.wsub && ui.wsub !== 'guia';
-    const soWired = S.nivel === 'wired';
-    ui.panel.classList.toggle('so-wired', soWired);
-    if (soWired && ui.tab !== 'wired' && ui.tab !== 'aprender') {
-      ui.tab = 'wired';
-      ui.root.querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.t === ui.tab)));
-    }
-    const isApr = ui.tab === 'aprender';
-    const isCn = false; // o ajudante de construção tem a janela dele
-    ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn || ui.tab === 'map' || ui.tab === 'obras';
-    ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild || isWm || isApr || isCn;
-    ui.root.querySelector('.wmview').hidden = !isWm;
-    ui.root.querySelector('.aprview').hidden = !isApr;
+    // o Wired (guia, pedir e montar, ler e aprender) e o ajudante de construção têm a janela deles
+    ui.root.querySelector('.filter').hidden = isPaste || isLevel || isCeo || isCd || isBuild || ui.tab === 'map' || ui.tab === 'obras';
+    ui.root.querySelector('.body').hidden = isPaste || isLevel || isCeo || isCd || isBuild;
     ui.root.querySelector('.buildview').hidden = !isBuild;
     ui.root.querySelector('.cdview').hidden = !isCd;
     ui.root.querySelector('.paste').hidden = !isPaste;
@@ -9731,13 +9937,7 @@
     ui.root.querySelector('.ceoview').hidden = !isCeo;
 
     renderPrompt();
-    if (isCn) {
-      renderCn();
-    } else if (isApr) {
-      renderApr();
-    } else if (isWm) {
-      renderWm();
-    } else if (isCeo) {
+    if (isCeo) {
       renderCeo();
     } else if (isBuild) {
       renderBuild();
@@ -9751,9 +9951,7 @@
       const f = ui.filter;
       const match = (r) => !f || r.name.toLowerCase().includes(f) || (r.classname || '').toLowerCase().includes(f);
       let html = '';
-      if (ui.tab === 'wired') {
-        html = wiredHtml(f);
-      } else if (ui.tab === 'obras') {
+      if (ui.tab === 'obras') {
         html = obrasHtml();
       } else if (ui.tab === 'cat') {
         html = catalogHtml(f);
