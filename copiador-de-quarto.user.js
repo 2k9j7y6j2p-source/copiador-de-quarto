@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.42
+// @version      3.0.43
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.42';
+  const VERSION = '3.0.43';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -842,7 +842,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma"], "wired": ["criminoso", "@construtora", "halloween.", "construidora"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma", "sp1nt"], "wired": ["criminoso", "@construtora", "halloween.", "construidora"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
