@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Construção
 // @namespace    copiador-de-quarto
-// @version      3.0.43
+// @version      3.0.44
 // @description  Assistente de construção para o Habblet: altura (:up), estado (:state), giro (:spin), compra automática e wired.
 // @match        *://*/*
 // @run-at       document-start
@@ -34,7 +34,7 @@
   if (W.__roomCopier) return;
 
   const TAG = '[Copiador de Quarto]';
-  const VERSION = '3.0.43';
+  const VERSION = '3.0.44';
 
   // Headers do protocolo usado pelo Nitro + Arcturus (PRODUCTION-201611291003-338511768).
   // Se o seu hotel usar outros números, as listas de mobis são detectadas pelo formato do pacote.
@@ -842,7 +842,7 @@
 
   // Trava da versão do GitHub: o plugin só funciona para os nicks liberados. Na cópia da Cobra fica null (sem trava).
   // Para os outros o painel some, os pacotes passam direto e aparece um aviso na tela ao entrar no jogo.
-  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma", "sp1nt"], "wired": ["criminoso", "@construtora", "halloween.", "construidora"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
+  const TRAVA = {"nicks": ["cobra", "martinha", "sugarfriend", "melanoma", "sp1nt", "criminoso"], "wired": ["@construtora", "halloween.", "construidora"], "resto": "construcao", "msgs": {}, "padrao": "Você não tem acesso a essa aplicação. Entrar em contato DC: vinipetter"};
   S.bloqueado = false;      // nick conhecido e não liberado: o plugin não faz mais nada
   S.liberado = !TRAVA;      // até saber o nick, o painel fica escondido (os pacotes continuam sendo lidos para achar o nick)
   S.nivel = 'total';        // 'total' = tudo; 'wired' = wired + ajudante de construção; 'construcao' = só o ajudante de construção
@@ -5262,7 +5262,7 @@
   const MARCA_KEY = 'copiadorDeQuarto.marcados.v1';
   const MARCA_PADRAO = ['cobra', 'martinha', 'sugarfriend', 'criminoso', '@construtora', 'halloween.']; // "Halloween." com ponto; "@Construtora" com @
   // versão básica (wired + ajudante): verde simples, sem o brilho da versão completa
-  const MARCA_BASICO = ['criminoso', '@construtora', 'halloween.'];
+  const MARCA_BASICO = ['@construtora', 'halloween.']; // Criminoso virou VIP (3.0.44): verde forte
   const MARCA = { on: true, ...(store.get(MARCA_KEY) || {}) };
   MARCA.nicks = [...new Set([...MARCA_PADRAO, ...(Array.isArray(MARCA.nicks) ? MARCA.nicks : [])])]; // os novos do padrão sempre entram
   const nickDe = (s) => String(s || '').replace(/^@/, '').trim().toLowerCase();
